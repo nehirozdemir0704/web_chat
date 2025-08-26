@@ -1,0 +1,40 @@
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_USER: chatuser
+      POSTGRES_PASSWORD: chatpass
+      POSTGRES_DB: chatdb
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: always
+    environment:
+      - NODE_ENV=production
+      - DB_HOST=postgres
+      - DB_USER=chatuser
+      - DB_PASSWORD=chatpass
+      - DB_NAME=chatdb
+    depends_on:
+      - postgres
+    ports:
+      - "3000:3000"
+
+  # Optional: Standalone frontend container (not needed if backend serves static files)
+  # frontend:
+  #   build: ./frontend
+  #   ports:
+  #     - "8080:80"
+  #   depends_on:
+  #     - backend
+
+volumes:
+  pgdata: 
