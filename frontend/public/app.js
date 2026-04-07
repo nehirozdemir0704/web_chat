@@ -44,6 +44,7 @@ const channelTree = document.getElementById('channelTree');
 const currentLocation = document.getElementById('currentLocation');
 const userBadge = document.getElementById('userBadge');
 const serverInfoName = document.getElementById('serverInfoName');
+const pinnedMessageText = document.getElementById('pinnedMessageText');
 const presenceSelect = document.getElementById('presenceSelect');
 const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
@@ -249,6 +250,14 @@ function formatTime(timestamp) {
   });
 }
 
+function formatDateLabel(timestamp) {
+  return new Date(timestamp).toLocaleDateString('tr-TR', {
+    day: 'numeric',
+    month: 'long',
+    year: 'numeric'
+  });
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll('&', '&amp;')
@@ -281,6 +290,21 @@ function myRole() {
 
 function canManageMessage(message) {
   return message.user === currentUser || ['admin', 'mod'].includes(myRole());
+}
+
+function roleBadgeMarkup(username) {
+  const server = getCurrentServer();
+  const role = server?.members.find((member) => member.username === username)?.role || 'member';
+  return `<span class="role-badge ${role}">${escapeHtml(role)}</span>`;
+}
+
+function getPinnedMessage() {
+  const list = getActiveConversationMessages();
+  const pinnedSource = list.find((message) => message.user === 'admin' || message.user === 'system' || message.user === 'bot') || list[0];
+  if (!pinnedSource) {
+    return 'Bu alanda sabitlenecek onemli mesaj henuz yok.';
+  }
+  return pinnedSource.text;
 }
 
 function wsProtocol() {
@@ -554,6 +578,7 @@ function renderHeader() {
   helperText.textContent = activeSidebarTab === 'dm'
     ? 'Direkt mesajlasma alani'
     : (channel.kind === 'voice' ? 'Sesli oda kanali' : 'Topluluk metin kanali');
+  pinnedMessageText.textContent = getPinnedMessage();
 }
 
 function renderMessages() {
@@ -571,7 +596,17 @@ function renderMessages() {
     return;
   }
 
+  let lastDateKey = '';
   list.forEach((message) => {
+    const messageDateKey = new Date(message.time).toDateString();
+    if (messageDateKey !== lastDateKey) {
+      const divider = document.createElement('div');
+      divider.className = 'date-divider';
+      divider.textContent = formatDateLabel(message.time);
+      chatArea.appendChild(divider);
+      lastDateKey = messageDateKey;
+    }
+
     const row = document.createElement('div');
     row.className = 'message-row';
     const reactions = Object.entries(message.reactions || {})
@@ -593,6 +628,7 @@ function renderMessages() {
       <div class="message-content">
         <div class="message-meta">
           <span class="message-author">${escapeHtml(message.user)}</span>
+          ${roleBadgeMarkup(message.user)}
           <span>${formatTime(message.time)}</span>
           ${message.editedAt ? '<span>(duzenlendi)</span>' : ''}
           ${activeSidebarTab === 'dm' && message.user === currentUser && activeDmUser
