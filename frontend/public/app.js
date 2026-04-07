@@ -83,6 +83,10 @@ const toggleCameraBtn = document.getElementById('toggleCameraBtn');
 const sidebar = document.querySelector('.sidebar');
 const membersTabBtn = document.getElementById('membersTabBtn');
 const dmTabBtn = document.getElementById('dmTabBtn');
+const composerAddBtn = document.getElementById('composerAddBtn');
+const membersPanelTitle = document.getElementById('membersPanelTitle');
+const membersPanelSubtitle = document.getElementById('membersPanelSubtitle');
+const membersCountPill = document.getElementById('membersCountPill');
 
 let currentTheme = localStorage.getItem('community-theme') || 'dark';
 let micEnabled = true;
@@ -555,6 +559,18 @@ function renderHeader() {
 function renderMessages() {
   chatArea.innerHTML = '';
   const list = getActiveConversationMessages();
+  if (!list.length) {
+    const channel = getCurrentChannel();
+    const empty = document.createElement('div');
+    empty.className = 'chat-empty';
+    empty.innerHTML = `
+      <strong>${escapeHtml(activeSidebarTab === 'dm' && activeDmUser ? `${activeDmUser} ile DM` : `${channel?.name || 'kanal'} alanina hos geldin`)}</strong>
+      <div>${escapeHtml(activeSidebarTab === 'dm' ? 'Bu ozel konusmada henuz mesaj yok. Ilk mesaji gondererek akisi baslatabilirsin.' : 'Bu kanalda henuz mesaj yok. Toplulugu baslatmak icin ilk mesaji sen gonderebilirsin.')}</div>
+    `;
+    chatArea.appendChild(empty);
+    return;
+  }
+
   list.forEach((message) => {
     const row = document.createElement('div');
     row.className = 'message-row';
@@ -668,7 +684,23 @@ function renderMembers() {
     return;
   }
 
-  server.members.forEach((member) => {
+  const sortedMembers = [...server.members].sort((a, b) => {
+    const presenceOrder = { online: 0, away: 1, busy: 2, offline: 3 };
+    const aPresence = appState.presence[a.username]?.status || 'offline';
+    const bPresence = appState.presence[b.username]?.status || 'offline';
+    const diff = (presenceOrder[aPresence] ?? 4) - (presenceOrder[bPresence] ?? 4);
+    if (diff !== 0) {
+      return diff;
+    }
+    return a.username.localeCompare(b.username, 'tr');
+  });
+
+  const activeCount = sortedMembers.filter((member) => (appState.presence[member.username]?.status || 'offline') !== 'offline').length;
+  membersPanelTitle.textContent = 'Uyeler';
+  membersPanelSubtitle.textContent = `${activeCount} aktif, ${sortedMembers.length} toplam uye`;
+  membersCountPill.textContent = String(sortedMembers.length);
+
+  sortedMembers.forEach((member) => {
     const presence = appState.presence[member.username]?.status || 'offline';
     const item = document.createElement('div');
     item.className = 'member-row';
@@ -700,6 +732,9 @@ function renderMembers() {
 function renderDmList() {
   dmList.innerHTML = '';
   const users = appState.users.filter((user) => user.username !== currentUser);
+  membersPanelTitle.textContent = 'DM';
+  membersPanelSubtitle.textContent = `${users.length} kullanici ile direkt mesaj`;
+  membersCountPill.textContent = String(users.length);
   dmList.innerHTML = users.map((user) => `
     ${(() => {
       const presence = appState.presence[user.username]?.status || 'offline';
@@ -1648,6 +1683,28 @@ function showPinnedInfo() {
   `);
 }
 
+function openQuickActions() {
+  showModal(`
+    <h2>Hizli Islemler</h2>
+    <button id="quickCreateChannel" class="modal-btn primary">Kanal Ekle</button>
+    <button id="quickCreateCategory" class="modal-btn secondary">Kategori Ekle</button>
+    <button id="quickReport" class="modal-btn secondary">Rapor Olustur</button>
+  `);
+
+  document.getElementById('quickCreateChannel').onclick = () => {
+    hideModal();
+    createChannel();
+  };
+  document.getElementById('quickCreateCategory').onclick = () => {
+    hideModal();
+    createCategory();
+  };
+  document.getElementById('quickReport').onclick = () => {
+    hideModal();
+    reportUser();
+  };
+}
+
 function toggleMembersPanel() {
   sidebar.classList.toggle('hidden-panel');
 }
@@ -1748,6 +1805,7 @@ window.onload = () => {
       renderAll();
     }
   };
+  composerAddBtn.onclick = openQuickActions;
   navHomeBtn.onclick = () => handleNavInfo('home');
   navChatBtn.onclick = () => handleNavInfo('chat');
   navGameBtn.onclick = () => handleNavInfo('game');
