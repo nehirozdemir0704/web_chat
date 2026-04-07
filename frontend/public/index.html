@@ -1,43 +1,1013 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="tr">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>WebSocket Chat - Discord Clone</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+  <title>Topluluk Sunucusu MVP</title>
+  <style>
+    :root {
+      --bg: #2b2d31;
+      --panel: #313338;
+      --panel-2: #1e1f22;
+      --panel-3: #232428;
+      --line: #3b3d44;
+      --text: #f2f3f5;
+      --muted: #a7acb6;
+      --accent: #5865f2;
+      --accent-2: #23a55a;
+      --danger: #da373c;
+      --warning: #f39c12;
+      --shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
+    }
+
+    body.light-mode {
+      --bg: #f2f3f5;
+      --panel: #ffffff;
+      --panel-2: #f7f8fa;
+      --panel-3: #ebedef;
+      --line: #d7d9df;
+      --text: #1f2328;
+      --muted: #667085;
+      --accent: #5865f2;
+      --accent-2: #1f9d55;
+      --danger: #cf3f45;
+      --warning: #d9822b;
+      --shadow: 0 10px 24px rgba(16, 24, 40, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      min-height: 100vh;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .app-shell {
+      display: grid;
+      grid-template-columns: 72px 280px 1fr 280px;
+      min-height: 100vh;
+    }
+
+    .servers,
+    .channels,
+    .workspace,
+    .sidebar {
+      padding: 20px;
+    }
+
+    .servers {
+      border-right: 1px solid var(--line);
+      background: #1e1f22;
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    body.light-mode .servers {
+      background: #e6e8ec;
+    }
+
+    .server-stack {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      width: 100%;
+      align-items: center;
+    }
+
+    .server-pill {
+      width: 48px;
+      height: 48px;
+      border: 0;
+      border-radius: 16px;
+      background: #2b2d31;
+      color: var(--text);
+      cursor: pointer;
+      transition: transform 0.18s ease, border-radius 0.18s ease, background 0.18s ease;
+      font-weight: 700;
+    }
+
+    body.light-mode .server-pill,
+    body.light-mode .nav-dot,
+    body.light-mode .action-btn,
+    body.light-mode .member-tab,
+    body.light-mode .emoji-btn,
+    body.light-mode .reaction-chip,
+    body.light-mode .tiny-action,
+    body.light-mode .member-row,
+    body.light-mode .report-card,
+    body.light-mode .poll-card,
+    body.light-mode .voice-member,
+    body.light-mode .permission-card,
+    body.light-mode .server-info-card {
+      background: #ffffff;
+      color: var(--text);
+    }
+
+    .server-pill.active,
+    .server-pill:hover {
+      background: var(--accent);
+      color: white;
+      border-radius: 14px;
+      transform: translateY(-2px);
+    }
+
+    .icon-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 16px;
+      border: 0;
+      background: var(--accent);
+      color: var(--text);
+      cursor: pointer;
+      font-size: 24px;
+    }
+
+    .channels {
+      border-right: 1px solid var(--line);
+      background: var(--panel-2);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .brand {
+      padding: 8px 0 18px;
+      border-radius: 0;
+      background: transparent;
+      border: 0;
+      box-shadow: none;
+    }
+
+    .brand h1,
+    .workspace-header h2,
+    .panel-title,
+    .modal h2 {
+      margin: 0;
+    }
+
+    .brand p,
+    .workspace-subtitle,
+    .panel-subtitle,
+    .modal-copy,
+    .helper-text {
+      color: var(--muted);
+    }
+
+    .action-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .action-btn,
+    .send-btn,
+    .modal-btn {
+      border: 0;
+      border-radius: 14px;
+      padding: 12px 14px;
+      cursor: pointer;
+      font-weight: 600;
+    }
+
+    .action-btn {
+      background: #2b2d31;
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      font-size: 13px;
+    }
+
+    .action-btn.wide {
+      grid-column: span 2;
+    }
+
+    .channel-group {
+      display: grid;
+      gap: 8px;
+    }
+
+    .channel-group-title {
+      font-size: 12px;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      display: flex;
+      justify-content: space-between;
+    }
+
+    .channel-item {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      border: 0;
+      cursor: pointer;
+      border-radius: 14px;
+      background: transparent;
+      color: var(--text);
+      padding: 10px 12px;
+      text-align: left;
+      font-size: 17px;
+    }
+
+    .channel-item.active,
+    .channel-item:hover {
+      background: #404249;
+    }
+
+    .workspace {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      gap: 0;
+      background: var(--panel);
+    }
+
+    .workspace-header,
+    .composer,
+    .sidebar-panel,
+    .modal {
+      background: var(--panel);
+      border: 0;
+      border-radius: 0;
+      box-shadow: none;
+    }
+
+    .workspace-header {
+      padding: 16px 20px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .workspace-meta {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .badge,
+    .presence {
+      border-radius: 999px;
+      padding: 6px 10px;
+      font-size: 12px;
+    }
+
+    .badge {
+      background: rgba(88, 101, 242, 0.18);
+      color: #c7ceff;
+    }
+
+    .presence {
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text);
+    }
+
+    .presence.online {
+      color: #90f0bb;
+    }
+
+    .presence.away {
+      color: #ffcf70;
+    }
+
+    .presence.busy,
+    .presence.offline {
+      color: #ff9b9b;
+    }
+
+    .chat-area {
+      overflow: auto;
+      padding: 2px 4px;
+      display: flex;
+      flex-direction: column;
+      gap: 0;
+      align-items: flex-start;
+    }
+
+    .message-row {
+      background: transparent;
+      border: 0;
+      border-radius: 4px;
+      padding: 4px 8px;
+      display: grid;
+      grid-template-columns: 32px 1fr;
+      gap: 6px;
+      align-items: start;
+      width: fit-content;
+      max-width: min(720px, 100%);
+    }
+
+    .message-meta {
+      display: flex;
+      gap: 5px;
+      align-items: center;
+      color: var(--muted);
+      font-size: 10px;
+      line-height: 1.2;
+      margin-bottom: 0;
+    }
+
+    .message-row:hover {
+      background: rgba(255, 255, 255, 0.025);
+    }
+
+    .message-body {
+      line-height: 1.2;
+      font-size: 12px;
+      margin-left: 0;
+      max-width: 620px;
+      white-space: pre-wrap;
+    }
+
+    .message-actions-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 0;
+      opacity: 0.88;
+    }
+
+    .reaction-palette,
+    .reactions-row,
+    .message-controls {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      align-items: center;
+    }
+
+    .emoji-btn,
+    .reaction-chip,
+    .tiny-action {
+      border: 0;
+      border-radius: 999px;
+      background: #232428;
+      color: var(--text);
+      padding: 1px 5px;
+      cursor: pointer;
+      font-size: 9px;
+    }
+
+    .reaction-chip.active {
+      background: rgba(88, 101, 242, 0.24);
+      color: #dbe0ff;
+    }
+
+    .tiny-action {
+      border-radius: 6px;
+    }
+
+    .tiny-action.danger {
+      background: rgba(218, 55, 60, 0.2);
+      color: #ffb7ba;
+    }
+
+    .composer {
+      padding: 10px 14px 14px;
+      display: grid;
+      gap: 6px;
+      border-top: 1px solid var(--line);
+    }
+
+    .composer-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 10px;
+    }
+
+    .composer input,
+    .composer select,
+    .modal-input {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      background: #383a40;
+      color: var(--text);
+      padding: 11px 12px;
+    }
+
+    .send-btn,
+    .modal-btn.primary {
+      background: var(--accent);
+      color: white;
+    }
+
+    .modal-btn.secondary {
+      background: transparent;
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .sidebar {
+      border-left: 1px solid var(--line);
+      display: grid;
+      gap: 0;
+      align-content: start;
+      background: var(--panel-2);
+    }
+
+    .sidebar-panel {
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .member-row,
+    .report-card,
+    .poll-card,
+    .voice-member,
+    .permission-card {
+      border-radius: 16px;
+      padding: 10px;
+      background: #2b2d31;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .permission-tags {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    .mini-tag {
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 12px;
+      background: rgba(73, 198, 165, 0.14);
+      color: #94f5de;
+    }
+
+    .member-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 10px;
+      align-items: center;
+    }
+
+    .member-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .member-name {
+      font-weight: 600;
+      font-size: 14px;
+    }
+
+    .member-role,
+    .report-meta {
+      color: var(--muted);
+      font-size: 11px;
+      margin-top: 4px;
+    }
+
+    .voice-name {
+      font-size: 18px;
+      font-weight: 700;
+    }
+
+    .voice-subtitle,
+    .empty-state {
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .voice-members {
+      display: grid;
+      gap: 10px;
+    }
+
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.62);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .modal {
+      width: min(420px, 100%);
+      padding: 24px;
+      display: grid;
+      gap: 12px;
+      border-radius: 18px;
+    }
+
+    .checkbox-row {
+      display: flex;
+      gap: 10px;
+      align-items: center;
+      color: var(--muted);
+    }
+
+    @media (max-width: 1180px) {
+      .app-shell {
+        grid-template-columns: 84px 260px 1fr;
+      }
+
+      .sidebar {
+        grid-column: 1 / -1;
+        grid-template-columns: 1fr 1fr;
+        border-left: 0;
+        border-top: 1px solid var(--line);
+      }
+    }
+
+    @media (max-width: 860px) {
+      .app-shell {
+        grid-template-columns: 1fr;
+      }
+
+      .servers,
+      .channels,
+      .sidebar {
+        border: 0;
+      }
+
+      .servers {
+        flex-direction: row;
+        justify-content: space-between;
+      }
+
+      .server-stack {
+        flex-direction: row;
+        justify-content: flex-start;
+        overflow: auto;
+      }
+
+      .action-grid,
+      .sidebar {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .nav-strip {
+      display: grid;
+      gap: 12px;
+      justify-items: center;
+      padding-top: 8px;
+    }
+
+    .nav-dot {
+      width: 40px;
+      height: 40px;
+      border-radius: 14px;
+      background: #313338;
+      display: grid;
+      place-items: center;
+      color: #dbdee1;
+      font-weight: 700;
+      border: 0;
+      cursor: pointer;
+    }
+
+    .theme-toggle {
+      cursor: pointer;
+      border: 0;
+    }
+
+    .server-info-card {
+      background: #232428;
+      border-radius: 16px;
+      padding: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+    }
+
+    .channel-section {
+      color: var(--muted);
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      margin-top: 8px;
+    }
+
+    .voice-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .voice-green,
+    .voice-red,
+    .warning-btn {
+      border: 0;
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .voice-green {
+      background: var(--accent-2);
+    }
+
+    .voice-red {
+      background: var(--danger);
+    }
+
+    .warning-btn {
+      background: var(--warning);
+    }
+
+    .logout-btn {
+      background: var(--danger);
+      border: 0;
+      border-radius: 10px;
+      padding: 12px 14px;
+      color: white;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    .top-actions {
+      display: flex;
+      gap: 12px;
+      color: var(--muted);
+      align-items: center;
+    }
+
+    .icon-action {
+      border: 0;
+      background: transparent;
+      color: inherit;
+      cursor: pointer;
+      font-size: 16px;
+    }
+
+    .member-tabs {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .member-tab {
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #232428;
+      text-align: center;
+      font-weight: 700;
+    }
+
+    .member-tab.active {
+      background: var(--accent);
+    }
+
+    .member-tab {
+      cursor: pointer;
+      border: 0;
+      color: var(--text);
+    }
+
+    .helper-line {
+      color: var(--muted);
+      font-size: 11px;
+      line-height: 1.35;
+    }
+
+    .message-stack {
+      display: grid;
+      gap: 1px;
+    }
+
+    .message-author {
+      font-weight: 700;
+      color: #d7dbdf;
+      font-size: 12px;
+    }
+
+    body.light-mode .message-author {
+      color: #20242b;
+    }
+
+    .message-avatar {
+      width: 26px;
+      height: 26px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 10px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #5865f2, #7983f5);
+      color: white;
+      text-transform: uppercase;
+      margin-top: 1px;
+      object-fit: cover;
+      overflow: hidden;
+    }
+
+    .avatar-image {
+      object-fit: cover;
+      background: #232428;
+    }
+
+    .member-avatar {
+      width: 30px;
+      height: 30px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 11px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #5865f2, #7983f5);
+      color: white;
+      object-fit: cover;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .profile-avatar {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 24px;
+      font-weight: 800;
+      background: linear-gradient(135deg, #5865f2, #7983f5);
+      color: white;
+      object-fit: cover;
+      overflow: hidden;
+    }
+
+    .message-content {
+      display: grid;
+      gap: 1px;
+      min-width: 0;
+      width: fit-content;
+      max-width: min(680px, calc(100vw - 520px));
+    }
+
+    .video-panel {
+      display: grid;
+      gap: 10px;
+    }
+
+    .video-grid {
+      display: grid;
+      gap: 10px;
+      grid-template-columns: 1fr;
+    }
+
+    .video-card {
+      background: #232428;
+      border-radius: 14px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+    }
+
+    .video-card video {
+      width: 100%;
+      height: 150px;
+      object-fit: cover;
+      background: #111214;
+      display: block;
+    }
+
+    .video-label {
+      font-size: 12px;
+      color: var(--muted);
+      padding: 8px 10px;
+    }
+
+    .video-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+
+    .video-actions.secondary {
+      grid-template-columns: 1fr 1fr;
+      margin-top: 8px;
+    }
+
+    .video-actions .action-btn:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .sidebar.hidden-panel {
+      display: none;
+    }
+
+    .dm-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .dm-user {
+      border: 0;
+      text-align: left;
+      border-radius: 12px;
+      padding: 10px 12px;
+      background: #2b2d31;
+      color: var(--text);
+      cursor: pointer;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .dm-user.active {
+      background: var(--accent);
+      color: white;
+    }
+
+    .dm-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .badge-dot {
+      min-width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      padding: 0 6px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--danger);
+      color: white;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .mini-action-btn {
+      border: 0;
+      border-radius: 8px;
+      padding: 6px 8px;
+      background: rgba(88, 101, 242, 0.18);
+      color: var(--text);
+      font-size: 11px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+  </style>
 </head>
-<body class="bg-gray-900 text-white h-screen">
-  <div id="app" class="flex h-screen">
-    <!-- Sidebar -->
-    <aside id="sidebar" class="w-64 bg-gray-800 flex flex-col p-4">
-      <div class="flex items-center mb-6">
-        <span class="text-2xl font-bold">Channels</span>
-        <button id="createChannelBtn" class="ml-auto bg-blue-600 px-2 py-1 rounded hover:bg-blue-700">+</button>
+<body>
+  <div id="appShell" class="app-shell">
+    <aside class="servers">
+      <div class="nav-strip">
+        <button id="navHomeBtn" class="nav-dot" title="Sunucu">S</button>
+        <button id="navChatBtn" class="nav-dot" title="Sohbet">💬</button>
+        <button id="navGameBtn" class="nav-dot" title="Oyunlar">🎮</button>
+        <button id="navAppsBtn" class="nav-dot" title="Araclar">🧩</button>
+        <button id="themeToggleBtn" class="nav-dot theme-toggle" title="Tema Degistir">🌙</button>
       </div>
-      <ul id="channelList" class="flex-1 space-y-2 overflow-y-auto"></ul>
-      <div class="mt-6">
-        <button id="logoutBtn" class="w-full bg-red-600 py-1 rounded hover:bg-red-700">Logout</button>
-      </div>
+      <div class="server-stack" id="serverList"></div>
+      <button id="createServerBtn" class="icon-btn">+</button>
     </aside>
-    <!-- Chat Area -->
-    <main class="flex-1 flex flex-col">
-      <header class="bg-gray-800 px-6 py-3 flex items-center justify-between">
-        <span id="currentChannel" class="text-xl font-semibold">#general</span>
-        <button id="inviteBtn" class="bg-green-600 px-3 py-1 rounded hover:bg-green-700 hidden">Invite</button>
+
+    <aside class="channels">
+      <section class="brand">
+        <h1>Topluluk Sunucusu</h1>
+        <p>Discord benzeri sohbet</p>
+      </section>
+
+      <section class="server-info-card">
+        <div class="channel-section">Sunucu Bilgisi</div>
+        <h3 style="margin-bottom:8px;" id="serverInfoName">Web Chat Server</h3>
+        <div class="panel-subtitle">Topluluk sunucusu, DM ve ses odasi destegi</div>
+      </section>
+
+      <section class="action-grid">
+        <button id="createCategoryBtn" class="action-btn">Kategori</button>
+        <button id="createChannelBtn" class="action-btn">Kanal</button>
+        <button id="assignRoleBtn" class="action-btn">Rol</button>
+        <button id="moderateBtn" class="action-btn">Mod</button>
+      </section>
+
+      <section id="channelTree"></section>
+
+      <section class="server-info-card">
+        <div class="channel-section">Ses Odasi</div>
+        <div id="voicePanel"></div>
+        <div class="voice-actions">
+          <button id="joinVoiceBtn" class="voice-green">Katil</button>
+          <button id="leaveVoiceBtn" class="voice-red">Ayril</button>
+        </div>
+      </section>
+
+      <section class="server-info-card">
+        <div style="display:grid; gap:6px;">
+          <div id="userBadge" class="badge">guest</div>
+          <div class="panel-subtitle">Sunucudaki rolun ve durumun burada gorunur.</div>
+        </div>
+        <div class="action-grid" style="margin-top:12px;">
+          <button id="reportBtn" class="warning-btn">Raporlar</button>
+          <button id="logoutBtn" class="logout-btn">Cikis Yap</button>
+        </div>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <header class="workspace-header">
+        <div>
+          <h2 id="currentLocation">Sunucu / Kanal</h2>
+          <div id="helperText" class="helper-text">Topluluk metin kanali</div>
+        </div>
+        <div class="workspace-meta">
+          <select id="presenceSelect">
+            <option value="online">online</option>
+            <option value="away">away</option>
+            <option value="busy">busy</option>
+          </select>
+          <div class="top-actions">
+            <button id="searchBtn" class="icon-action" title="Ara">🔎</button>
+            <button id="pinBtn" class="icon-action" title="Bilgi">📌</button>
+            <button id="videoBtn" class="icon-action" title="Goruntulu Konusma">🎥</button>
+            <button id="membersToggleBtn" class="icon-action" title="Uyeleri Gizle/Goster">👥</button>
+          </div>
+        </div>
       </header>
-      <section id="chatArea" class="flex-1 overflow-y-auto p-6 space-y-2"></section>
-      <footer class="bg-gray-800 px-6 py-3 flex">
-        <input id="messageInput" class="flex-1 bg-gray-700 rounded px-3 py-2 mr-2" placeholder="Type a message..." autocomplete="off" />
-        <button id="sendBtn" class="bg-blue-600 px-4 py-2 rounded hover:bg-blue-700">Send</button>
+
+      <section id="chatArea" class="chat-area"></section>
+
+      <footer class="composer">
+        <div class="helper-line">Komutlar: /help, /stats, /poll soru | secenek1 | secenek2, /report mantigi panelden, moderasyon admin/mod uzerinden calisir.</div>
+        <div class="composer-row">
+          <input id="messageInput" placeholder="Mesaj gonder" />
+          <button id="sendBtn" class="send-btn">Gonder</button>
+        </div>
       </footer>
     </main>
+
+    <aside class="sidebar">
+      <section class="sidebar-panel">
+        <div class="member-tabs">
+          <button id="membersTabBtn" class="member-tab active">Uyeler</button>
+          <button id="dmTabBtn" class="member-tab">DM</button>
+        </div>
+      </section>
+
+      <section class="sidebar-panel">
+        <div class="panel-title">Goruntulu Konusma</div>
+        <div class="panel-subtitle">Ayni kanaldaki kullanicilarla WebRTC gorusme</div>
+        <div class="video-actions">
+          <button id="startVideoBtn" class="voice-green">Baslat</button>
+          <button id="endVideoBtn" class="voice-red">Bitir</button>
+        </div>
+        <div class="video-actions secondary">
+          <button id="toggleMicBtn" class="action-btn">Mikrofon</button>
+          <button id="toggleCameraBtn" class="action-btn">Kamera</button>
+        </div>
+        <div id="videoPanel" class="video-panel">
+          <div class="empty-state">Henuz aktif gorusme yok.</div>
+        </div>
+      </section>
+
+      <section class="sidebar-panel">
+        <div class="panel-title">Cevrimici</div>
+        <div class="panel-subtitle">Sunucudaki aktif uyeler</div>
+        <div id="memberList"></div>
+        <div id="dmList" class="dm-list hidden"></div>
+      </section>
+
+      <section class="sidebar-panel">
+        <div class="panel-title">Raporlar ve Moderasyon</div>
+        <div id="reportList"></div>
+      </section>
+
+      <section class="sidebar-panel">
+        <div class="panel-title">Anketler</div>
+        <div id="pollList"></div>
+      </section>
+
+      <section class="sidebar-panel">
+        <div class="panel-title">Izin Matrisi</div>
+        <div class="panel-subtitle">Hangi rol hangi kanali gorebilir</div>
+        <div id="permissionsList"></div>
+      </section>
+    </aside>
   </div>
-  <!-- Modals -->
-  <div id="modalOverlay" class="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-50 hidden">
-    <div id="modal" class="bg-gray-800 p-6 rounded shadow-lg w-80">
-      <!-- Modal content will be injected here by app.js -->
-    </div>
+
+  <div id="modalOverlay" class="modal-overlay hidden">
+    <div id="modal" class="modal"></div>
   </div>
+
   <script src="app.js"></script>
 </body>
-</html> 
+</html>

@@ -1,248 +1,1769 @@
-// frontend/public/app.js - Discord-like SPA chat logic
 const API = {
-  channels: '/api/channels',
-  users: '/api/users',
+  bootstrap: '/api/bootstrap',
   register: '/api/register',
   login: '/api/login',
+  createServer: '/api/server',
+  createCategory: '/api/category',
   createChannel: '/api/channel',
+  changeRole: '/api/role',
+  moderation: '/api/moderation',
+  report: '/api/report',
+  presence: '/api/presence',
+  avatar: '/api/avatar'
 };
 
-let ws;
+let ws = null;
 let currentUser = null;
-let currentChannel = 'general';
-let channels = [];
-let users = [];
+let appState = {
+  servers: [],
+  messages: {},
+  directMessages: {},
+  voicePresence: {},
+  presence: {},
+  users: [],
+  callPresence: {},
+  typingState: {}
+};
+let currentServerId = null;
+let currentChannelId = null;
+let currentVoiceChannelId = null;
+let activeCallChannelId = null;
+let activeSidebarTab = 'members';
+let activeDmUser = null;
+let unreadDmCounts = {};
+let typingTimer = null;
+let localStream = null;
+let audioContext = null;
+let notificationsEnabled = false;
+const peerConnections = new Map();
+const remoteStreams = new Map();
+let lastCallCapabilityMessage = '';
 
-// --- DOM Elements ---
-const channelList = document.getElementById('channelList');
-const chatArea = document.getElementById('chatArea');
+const serverList = document.getElementById('serverList');
+const channelTree = document.getElementById('channelTree');
+const currentLocation = document.getElementById('currentLocation');
+const userBadge = document.getElementById('userBadge');
+const serverInfoName = document.getElementById('serverInfoName');
+const presenceSelect = document.getElementById('presenceSelect');
 const messageInput = document.getElementById('messageInput');
 const sendBtn = document.getElementById('sendBtn');
-const currentChannelSpan = document.getElementById('currentChannel');
-const createChannelBtn = document.getElementById('createChannelBtn');
-const inviteBtn = document.getElementById('inviteBtn');
-const logoutBtn = document.getElementById('logoutBtn');
+const chatArea = document.getElementById('chatArea');
+const memberList = document.getElementById('memberList');
+const dmList = document.getElementById('dmList');
+const voicePanel = document.getElementById('voicePanel');
+const reportList = document.getElementById('reportList');
+const pollList = document.getElementById('pollList');
+const videoPanel = document.getElementById('videoPanel');
 const modalOverlay = document.getElementById('modalOverlay');
 const modal = document.getElementById('modal');
+const createServerBtn = document.getElementById('createServerBtn');
+const createCategoryBtn = document.getElementById('createCategoryBtn');
+const createChannelBtn = document.getElementById('createChannelBtn');
+const assignRoleBtn = document.getElementById('assignRoleBtn');
+const moderateBtn = document.getElementById('moderateBtn');
+const reportBtn = document.getElementById('reportBtn');
+const joinVoiceBtn = document.getElementById('joinVoiceBtn');
+const leaveVoiceBtn = document.getElementById('leaveVoiceBtn');
+const logoutBtn = document.getElementById('logoutBtn');
+const helperText = document.getElementById('helperText');
+const permissionsList = document.getElementById('permissionsList');
+const themeToggleBtn = document.getElementById('themeToggleBtn');
+const searchBtn = document.getElementById('searchBtn');
+const pinBtn = document.getElementById('pinBtn');
+const videoBtn = document.getElementById('videoBtn');
+const membersToggleBtn = document.getElementById('membersToggleBtn');
+const navHomeBtn = document.getElementById('navHomeBtn');
+const navChatBtn = document.getElementById('navChatBtn');
+const navGameBtn = document.getElementById('navGameBtn');
+const navAppsBtn = document.getElementById('navAppsBtn');
+const startVideoBtn = document.getElementById('startVideoBtn');
+const endVideoBtn = document.getElementById('endVideoBtn');
+const toggleMicBtn = document.getElementById('toggleMicBtn');
+const toggleCameraBtn = document.getElementById('toggleCameraBtn');
+const sidebar = document.querySelector('.sidebar');
+const membersTabBtn = document.getElementById('membersTabBtn');
+const dmTabBtn = document.getElementById('dmTabBtn');
 
-// --- State ---
-let joinedChannels = new Set(['general']);
-let messages = { general: [] };
+let currentTheme = localStorage.getItem('community-theme') || 'dark';
+let micEnabled = true;
+let cameraEnabled = true;
 
-// --- UI Functions ---
+function applyTheme(theme) {
+  currentTheme = theme;
+  document.body.classList.toggle('light-mode', theme === 'light');
+  themeToggleBtn.textContent = theme === 'light' ? '☀️' : '🌙';
+  localStorage.setItem('community-theme', theme);
+}
+
+function request(url, options = {}) {
+  return fetch(url, {
+    headers: { 'Content-Type': 'application/json' },
+    ...options
+  }).then(async (res) => {
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      throw new Error(data.error || 'Request failed');
+    }
+    return data;
+  });
+}
+
+function getCurrentServer() {
+  return appState.servers.find((server) => server.id === currentServerId);
+}
+
+function getCurrentChannel() {
+  const server = getCurrentServer();
+  if (!server) {
+    return null;
+  }
+
+  for (const category of server.categories) {
+    for (const channel of category.channels) {
+      if (channel.id === currentChannelId) {
+        return channel;
+      }
+    }
+  }
+
+  return null;
+}
+
+function getCurrentVoiceMembers() {
+  return appState.voicePresence[currentVoiceChannelId] || [];
+}
+
+function getCurrentCallMembers() {
+  return appState.callPresence[activeCallChannelId || currentChannelId] || [];
+}
+
+function getActiveConversationMessages() {
+  if (activeSidebarTab === 'dm' && activeDmUser) {
+    return appState.directMessages[activeDmUser] || [];
+  }
+  const channel = getCurrentChannel();
+  return channel ? (appState.messages[channel.id] || []) : [];
+}
+
+function dmScopeKey(username) {
+  return `dm:${[currentUser, username].sort().join('__')}`;
+}
+
+function showToast(message) {
+  helperText.textContent = message;
+}
+
+function isSecureMediaContext() {
+  return window.isSecureContext || ['localhost', '127.0.0.1'].includes(location.hostname);
+}
+
+function explainMediaError(error) {
+  if (!isSecureMediaContext()) {
+    return 'Goruntulu konusma icin guvenli baglanti gerekli. Bu ozelligi localhost veya HTTPS adresinde ac.';
+  }
+
+  const name = error?.name || '';
+  if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+    return 'Tarayici kamera veya mikrofon iznini engelledi. Adres cubugundan izin verip tekrar dene.';
+  }
+  if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+    return 'Kamera veya mikrofon bulunamadi.';
+  }
+  if (name === 'NotReadableError' || name === 'TrackStartError') {
+    return 'Kamera veya mikrofon baska bir uygulama tarafindan kullaniliyor olabilir.';
+  }
+  return 'Goruntulu konusma baslatilamadi.';
+}
+
+async function ensureNotificationsEnabled() {
+  if (!('Notification' in window)) {
+    return false;
+  }
+
+  if (Notification.permission === 'granted') {
+    notificationsEnabled = true;
+    return true;
+  }
+
+  if (Notification.permission !== 'denied') {
+    const permission = await Notification.requestPermission();
+    notificationsEnabled = permission === 'granted';
+    return notificationsEnabled;
+  }
+
+  return false;
+}
+
+function showBrowserNotification(title, body) {
+  if (!('Notification' in window) || Notification.permission !== 'granted') {
+    return;
+  }
+
+  try {
+    const notification = new Notification(title, { body });
+    setTimeout(() => notification.close(), 4000);
+  } catch {
+    // Ignore notification errors in unsupported browser contexts.
+  }
+}
+
+function playNotificationSound() {
+  try {
+    audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+    if (audioContext.state === 'suspended') {
+      audioContext.resume();
+    }
+    const oscillator = audioContext.createOscillator();
+    const gain = audioContext.createGain();
+    oscillator.type = 'triangle';
+    oscillator.frequency.value = 740;
+    gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.04, audioContext.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.16);
+    oscillator.connect(gain);
+    gain.connect(audioContext.destination);
+    oscillator.start();
+    oscillator.stop(audioContext.currentTime + 0.18);
+  } catch {
+    // Browser may block audio until user interaction.
+  }
+}
+
 function showModal(html) {
   modal.innerHTML = html;
   modalOverlay.classList.remove('hidden');
 }
+
 function hideModal() {
   modalOverlay.classList.add('hidden');
 }
-function renderChannels() {
-  channelList.innerHTML = '';
-  channels.forEach(ch => {
-    // Private channel: only show if user is a member
-    if (ch.type === 'private' && !ch.members.includes(currentUser)) return;
-    const li = document.createElement('li');
-    li.className = `flex items-center px-2 py-1 rounded cursor-pointer ${currentChannel === ch.name ? 'bg-gray-700' : 'hover:bg-gray-700'}`;
-    li.textContent = (ch.type === 'private' ? '🔒 ' : '#') + ch.name;
-    li.onclick = () => switchChannel(ch.name);
-    // Leave button (except general)
-    if (ch.name !== 'general' && joinedChannels.has(ch.name)) {
-      const leaveBtn = document.createElement('button');
-      leaveBtn.textContent = 'Leave';
-      leaveBtn.className = 'ml-auto text-xs bg-red-600 px-2 py-0.5 rounded hover:bg-red-700';
-      leaveBtn.onclick = (e) => { e.stopPropagation(); leaveChannel(ch.name); };
-      li.appendChild(leaveBtn);
-    }
-    channelList.appendChild(li);
+
+function formatTime(timestamp) {
+  return new Date(timestamp).toLocaleTimeString('tr-TR', {
+    hour: '2-digit',
+    minute: '2-digit'
   });
-}
-function renderMessages() {
-  chatArea.innerHTML = '';
-  (messages[currentChannel] || []).forEach(msg => {
-    const div = document.createElement('div');
-    div.className = 'flex items-baseline space-x-2';
-    div.innerHTML = `<span class="font-bold">${msg.user}</span><span class="text-gray-400 text-xs">${new Date(msg.time).toLocaleTimeString()}</span><span>${msg.text}</span>`;
-    chatArea.appendChild(div);
-  });
-  chatArea.scrollTop = chatArea.scrollHeight;
-}
-function updateInviteBtn() {
-  const ch = channels.find(c => c.name === currentChannel);
-  inviteBtn.classList.toggle('hidden', !(ch && ch.type === 'private' && ch.members.includes(currentUser)));
 }
 
-// --- Auth ---
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function userInitials(username) {
+  return (username || '?').trim().slice(0, 1).toUpperCase();
+}
+
+function getUserRecord(username) {
+  return appState.users.find((user) => user.username === username) || null;
+}
+
+function avatarMarkup(username, className = 'message-avatar') {
+  const user = getUserRecord(username);
+  if (user?.avatar) {
+    return `<img class="${className} avatar-image" src="${user.avatar}" alt="${escapeHtml(username)}" />`;
+  }
+  return `<div class="${className}">${userInitials(username)}</div>`;
+}
+
+function myRole() {
+  const server = getCurrentServer();
+  return server?.members.find((member) => member.username === currentUser)?.role || 'member';
+}
+
+function canManageMessage(message) {
+  return message.user === currentUser || ['admin', 'mod'].includes(myRole());
+}
+
+function wsProtocol() {
+  return location.protocol === 'https:' ? 'wss' : 'ws';
+}
+
+function closePeerConnection(username) {
+  const pc = peerConnections.get(username);
+  if (pc) {
+    pc.close();
+    peerConnections.delete(username);
+  }
+  remoteStreams.delete(username);
+}
+
+function cleanupCallUi() {
+  remoteStreams.clear();
+  [...peerConnections.keys()].forEach(closePeerConnection);
+  micEnabled = true;
+  cameraEnabled = true;
+  lastCallCapabilityMessage = '';
+  renderVideoPanel();
+}
+
+function renderVideoPanel() {
+  const participants = getCurrentCallMembers();
+  const hasCall = Boolean(localStream || participants.length || remoteStreams.size);
+  const hasAudioTrack = Boolean(localStream?.getAudioTracks().length);
+  const hasVideoTrack = Boolean(localStream?.getVideoTracks().length);
+  toggleMicBtn.textContent = hasAudioTrack ? (micEnabled ? 'Mikrofon Acik' : 'Mikrofon Kapali') : 'Mikrofon Yok';
+  toggleCameraBtn.textContent = hasVideoTrack ? (cameraEnabled ? 'Kamera Acik' : 'Kamera Kapali') : 'Kamera Yok';
+  toggleMicBtn.disabled = !hasAudioTrack;
+  toggleCameraBtn.disabled = !hasVideoTrack;
+
+  if (!hasCall) {
+    const secureHint = isSecureMediaContext()
+      ? 'Henuz aktif gorusme yok. Ayni kanaldaki iki kullanici Baslat ile gorusmeye girebilir.'
+      : 'Bu adres guvenli degil. Goruntulu konusma icin localhost veya HTTPS kullan.';
+    videoPanel.innerHTML = `<div class="empty-state">${escapeHtml(lastCallCapabilityMessage || secureHint)}</div>`;
+    return;
+  }
+
+  const cards = [];
+  if (localStream) {
+    cards.push(`
+      <div class="video-card">
+        <video id="localVideo" autoplay muted playsinline></video>
+        <div class="video-label">Sen</div>
+      </div>
+    `);
+  }
+
+  for (const [username] of remoteStreams.entries()) {
+    cards.push(`
+      <div class="video-card">
+        <video id="remoteVideo_${username}" autoplay playsinline></video>
+        <div class="video-label">${escapeHtml(username)}</div>
+      </div>
+    `);
+  }
+
+  if (!cards.length) {
+    cards.push('<div class="empty-state">Cagri acik. Diger katilimcilari bekliyorsun.</div>');
+  }
+
+  videoPanel.innerHTML = `
+    <div class="panel-subtitle">Kanal: ${escapeHtml((getCurrentServer()?.categories.flatMap((category) => category.channels).find((channel) => channel.id === (activeCallChannelId || currentChannelId))?.name) || '-')}</div>
+    <div class="panel-subtitle">Katilimcilar: ${participants.join(', ') || currentUser}</div>
+    <div class="panel-subtitle">Durum: ${localStream ? 'Goruntulu konusma acik' : 'Baglanti bekleniyor'}</div>
+    ${lastCallCapabilityMessage ? `<div class="panel-subtitle">${escapeHtml(lastCallCapabilityMessage)}</div>` : ''}
+    <div class="video-grid">${cards.join('')}</div>
+  `;
+
+  if (localStream) {
+    const localVideo = document.getElementById('localVideo');
+    if (localVideo) {
+      localVideo.srcObject = localStream;
+    }
+  }
+
+  for (const [username, stream] of remoteStreams.entries()) {
+    const el = document.getElementById(`remoteVideo_${username}`);
+    if (el) {
+      el.srcObject = stream;
+    }
+  }
+}
+
+function createPeerConnection(peerUsername) {
+  if (peerConnections.has(peerUsername)) {
+    return peerConnections.get(peerUsername);
+  }
+
+  const pc = new RTCPeerConnection({
+    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+  });
+
+  if (localStream) {
+    localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+  }
+
+  pc.onicecandidate = (event) => {
+    if (event.candidate) {
+      ws.send(JSON.stringify({
+        type: 'webrtcSignal',
+        username: currentUser,
+        target: peerUsername,
+        channelId: currentChannelId,
+        signal: { type: 'candidate', candidate: event.candidate }
+      }));
+    }
+  };
+
+  pc.ontrack = (event) => {
+    remoteStreams.set(peerUsername, event.streams[0]);
+    renderVideoPanel();
+  };
+
+  pc.onconnectionstatechange = () => {
+    if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
+      closePeerConnection(peerUsername);
+      renderVideoPanel();
+    }
+  };
+
+  peerConnections.set(peerUsername, pc);
+  return pc;
+}
+
+async function ensureLocalMedia() {
+  if (localStream) {
+    return localStream;
+  }
+
+  if (!navigator.mediaDevices?.getUserMedia) {
+    throw new Error('Bu tarayici kamera/mikrofon erisimini desteklemiyor.');
+  }
+
+  if (!isSecureMediaContext()) {
+    throw new Error('Goruntulu konusma icin guvenli baglanti gerekli. localhost veya HTTPS kullan.');
+  }
+
+  const attempts = [
+    { video: true, audio: true, label: '' },
+    { video: true, audio: false, label: 'Mikrofon izni olmadigi icin sadece kamera acildi.' },
+    { video: false, audio: true, label: 'Kamera izni olmadigi icin sadece mikrofon acildi.' }
+  ];
+
+  let lastError = null;
+  for (const attempt of attempts) {
+    try {
+      localStream = await navigator.mediaDevices.getUserMedia(attempt);
+      micEnabled = Boolean(localStream.getAudioTracks().length);
+      cameraEnabled = Boolean(localStream.getVideoTracks().length);
+      lastCallCapabilityMessage = attempt.label;
+      renderVideoPanel();
+      return localStream;
+    } catch (error) {
+      lastError = error;
+    }
+  }
+
+  throw lastError || new Error('Kamera veya mikrofon acilamadi.');
+}
+
+async function initiateOffer(peerUsername) {
+  const pc = createPeerConnection(peerUsername);
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  ws.send(JSON.stringify({
+    type: 'webrtcSignal',
+    username: currentUser,
+    target: peerUsername,
+    channelId: currentChannelId,
+    signal: { type: 'offer', sdp: offer }
+  }));
+}
+
+async function handleIncomingSignal(data) {
+  const { from, signal } = data;
+  try {
+    await ensureLocalMedia();
+  } catch (error) {
+    showToast(explainMediaError(error));
+    return;
+  }
+  const pc = createPeerConnection(from);
+
+  if (signal.type === 'offer') {
+    await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+    const answer = await pc.createAnswer();
+    await pc.setLocalDescription(answer);
+    ws.send(JSON.stringify({
+      type: 'webrtcSignal',
+      username: currentUser,
+      target: from,
+      channelId: currentChannelId,
+      signal: { type: 'answer', sdp: answer }
+    }));
+    return;
+  }
+
+  if (signal.type === 'answer') {
+    await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+    return;
+  }
+
+  if (signal.type === 'candidate' && signal.candidate) {
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
+    } catch {
+      // Ignore transient ICE timing issues in this MVP.
+    }
+  }
+}
+
+function renderServers() {
+  serverList.innerHTML = '';
+  appState.servers.forEach((server) => {
+    const button = document.createElement('button');
+    button.className = `server-pill ${server.id === currentServerId ? 'active' : ''}`;
+    button.textContent = server.name.slice(0, 2).toUpperCase();
+    button.title = server.name;
+    button.onclick = () => switchServer(server.id);
+    serverList.appendChild(button);
+  });
+}
+
+function renderChannels() {
+  const server = getCurrentServer();
+  channelTree.innerHTML = '';
+
+  if (!server) {
+    return;
+  }
+
+  server.categories.forEach((category) => {
+    const group = document.createElement('div');
+    group.className = 'channel-group';
+
+    const title = document.createElement('div');
+    title.className = 'channel-group-title';
+    title.textContent = category.name;
+    group.appendChild(title);
+
+    category.channels.forEach((channel) => {
+      const item = document.createElement('button');
+      item.className = `channel-item ${channel.id === currentChannelId ? 'active' : ''}`;
+      item.innerHTML = `<span>${channel.kind === 'voice' ? '🔊' : '#'}</span><span>${channel.name}</span>`;
+      item.onclick = () => switchChannel(channel.id);
+      group.appendChild(item);
+    });
+
+    channelTree.appendChild(group);
+  });
+}
+
+function renderHeader() {
+  const server = getCurrentServer();
+  const channel = getCurrentChannel();
+  if (!server || !channel) {
+    return;
+  }
+
+  currentLocation.textContent = activeSidebarTab === 'dm' && activeDmUser
+    ? `DM / ${activeDmUser}`
+    : `${channel.kind === 'voice' ? '🔊' : '#'} ${channel.name}`;
+  const me = server.members.find((member) => member.username === currentUser);
+  userBadge.textContent = `${currentUser} (${me?.role || 'member'})`;
+  serverInfoName.textContent = server.name;
+  helperText.textContent = activeSidebarTab === 'dm'
+    ? 'Direkt mesajlasma alani'
+    : (channel.kind === 'voice' ? 'Sesli oda kanali' : 'Topluluk metin kanali');
+}
+
+function renderMessages() {
+  chatArea.innerHTML = '';
+  const list = getActiveConversationMessages();
+  list.forEach((message) => {
+    const row = document.createElement('div');
+    row.className = 'message-row';
+    const reactions = Object.entries(message.reactions || {})
+      .map(([emoji, users]) => {
+        const active = users.includes(currentUser) ? 'active' : '';
+        return `<button class="reaction-chip ${active}" data-message-id="${message.id}" data-emoji="${emoji}">${emoji} ${users.length}</button>`;
+      })
+      .join('');
+    const controls = canManageMessage(message)
+      ? `
+        <div class="message-controls">
+          <button class="tiny-action" data-action="edit" data-message-id="${message.id}">Duzenle</button>
+          <button class="tiny-action danger" data-action="delete" data-message-id="${message.id}">Sil</button>
+        </div>
+      `
+      : '';
+    row.innerHTML = `
+      ${avatarMarkup(message.user)}
+      <div class="message-content">
+        <div class="message-meta">
+          <span class="message-author">${escapeHtml(message.user)}</span>
+          <span>${formatTime(message.time)}</span>
+          ${message.editedAt ? '<span>(duzenlendi)</span>' : ''}
+          ${activeSidebarTab === 'dm' && message.user === currentUser && activeDmUser
+            ? `<span>${(message.seenBy || []).includes(activeDmUser) ? 'goruldu' : 'gonderildi'}</span>`
+            : ''}
+        </div>
+        <div class="message-stack">
+          <div class="message-body">${escapeHtml(message.text)}</div>
+          <div class="reactions-row">${reactions}</div>
+          <div class="message-actions-row">
+            <div class="reaction-palette">
+              <button class="emoji-btn" data-message-id="${message.id}" data-emoji="👍">👍</button>
+              <button class="emoji-btn" data-message-id="${message.id}" data-emoji="❤️">❤️</button>
+              <button class="emoji-btn" data-message-id="${message.id}" data-emoji="😂">😂</button>
+              <button class="emoji-btn" data-message-id="${message.id}" data-emoji="😮">😮</button>
+              <button class="emoji-btn" data-message-id="${message.id}" data-emoji="👏">👏</button>
+            </div>
+            ${controls}
+          </div>
+        </div>
+      </div>
+    `;
+    chatArea.appendChild(row);
+  });
+
+  chatArea.querySelectorAll('.emoji-btn').forEach((button) => {
+    button.onclick = () => {
+      ws.send(JSON.stringify({
+        type: 'react',
+        serverId: currentServerId,
+        channelId: currentChannelId,
+        username: currentUser,
+        messageId: button.dataset.messageId,
+        emoji: button.dataset.emoji
+      }));
+    };
+  });
+
+  chatArea.querySelectorAll('.reaction-chip').forEach((button) => {
+    button.onclick = () => {
+      ws.send(JSON.stringify({
+        type: 'react',
+        serverId: currentServerId,
+        channelId: currentChannelId,
+        username: currentUser,
+        messageId: button.dataset.messageId,
+        emoji: button.dataset.emoji
+      }));
+    };
+  });
+
+  chatArea.querySelectorAll('.tiny-action').forEach((button) => {
+    button.onclick = () => {
+      const messageId = button.dataset.messageId;
+      const action = button.dataset.action;
+      if (action === 'delete') {
+        ws.send(JSON.stringify({
+          type: 'deleteMessage',
+          serverId: currentServerId,
+          channelId: currentChannelId,
+          username: currentUser,
+          messageId
+        }));
+        return;
+      }
+
+      const targetMessage = (appState.messages[currentChannelId] || []).find((message) => message.id === messageId);
+      const nextText = prompt('Mesaji duzenle:', targetMessage?.text || '');
+      if (nextText && nextText.trim()) {
+        ws.send(JSON.stringify({
+          type: 'editMessage',
+          serverId: currentServerId,
+          channelId: currentChannelId,
+          username: currentUser,
+          messageId,
+          text: nextText.trim()
+        }));
+      }
+    };
+  });
+
+  chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+function renderMembers() {
+  const server = getCurrentServer();
+  memberList.innerHTML = '';
+  if (!server) {
+    return;
+  }
+
+  server.members.forEach((member) => {
+    const presence = appState.presence[member.username]?.status || 'offline';
+    const item = document.createElement('div');
+    item.className = 'member-row';
+    item.innerHTML = `
+      <div style="display:flex; gap:10px; align-items:center;">
+        ${avatarMarkup(member.username, 'member-avatar')}
+        <div>
+          <div class="member-name">${member.username}</div>
+          <div class="member-role">${member.role.toUpperCase()}</div>
+        </div>
+      </div>
+      <div class="member-actions">
+        <span class="presence ${presence}">${presence}</span>
+        <button class="mini-action-btn member-profile-btn" data-username="${member.username}">Profil</button>
+      </div>
+    `;
+    item.onclick = () => showUserProfile(member.username);
+    memberList.appendChild(item);
+  });
+
+  memberList.querySelectorAll('.member-profile-btn').forEach((button) => {
+    button.onclick = (event) => {
+      event.stopPropagation();
+      showUserProfile(button.dataset.username);
+    };
+  });
+}
+
+function renderDmList() {
+  dmList.innerHTML = '';
+  const users = appState.users.filter((user) => user.username !== currentUser);
+  dmList.innerHTML = users.map((user) => `
+    ${(() => {
+      const presence = appState.presence[user.username]?.status || 'offline';
+      return `
+    <div class="dm-row">
+      <button class="dm-user ${activeDmUser === user.username ? 'active' : ''}" data-username="${user.username}">
+        <span>${escapeHtml(user.username)}</span>
+        <span style="display:flex; gap:8px; align-items:center;">
+          ${unreadDmCounts[user.username] ? `<span class="badge-dot">${unreadDmCounts[user.username]}</span>` : ''}
+          <span class="presence ${presence}">${presence}</span>
+        </span>
+      </button>
+      <button class="mini-action-btn dm-profile-btn" data-username="${user.username}">Profil</button>
+    </div>
+      `;
+    })()}
+  `).join('');
+
+  dmList.querySelectorAll('.dm-user').forEach((button) => {
+    button.onclick = () => openDm(button.dataset.username);
+    button.oncontextmenu = (event) => {
+      event.preventDefault();
+      showUserProfile(button.dataset.username);
+    };
+  });
+
+  dmList.querySelectorAll('.dm-profile-btn').forEach((button) => {
+    button.onclick = () => showUserProfile(button.dataset.username);
+  });
+}
+
+function showUserProfile(username) {
+  const server = getCurrentServer();
+  const member = server?.members.find((item) => item.username === username);
+  const user = appState.users.find((item) => item.username === username);
+  const presence = appState.presence[username]?.status || user?.status || 'offline';
+  const dmCount = (appState.directMessages[username] || []).length;
+  const voiceEntry = Object.entries(appState.voicePresence).find(([, users]) => users.includes(username));
+  const voiceChannel = server?.categories.flatMap((category) => category.channels).find((channel) => channel.id === voiceEntry?.[0]);
+
+  showModal(`
+    <h2>Kullanici Profili</h2>
+    <div style="display:flex; justify-content:center; margin-bottom:4px;">${avatarMarkup(username, 'profile-avatar')}</div>
+    <div class="report-card">
+      <div><strong>${escapeHtml(username)}</strong></div>
+      <div class="report-meta">Durum: ${escapeHtml(presence)}</div>
+      <div class="report-meta">Rol: ${escapeHtml((member?.role || 'member').toUpperCase())}</div>
+      <div class="report-meta">DM sayisi: ${dmCount}</div>
+      <div class="report-meta">Sesli oda: ${escapeHtml(voiceChannel?.name || 'yok')}</div>
+    </div>
+    ${username === currentUser ? `
+      <input id="avatarFileInput" type="file" accept="image/*" class="modal-input" />
+      <button id="saveAvatarBtn" class="modal-btn secondary">Profil Fotosu Yukle</button>
+    ` : ''}
+    <button id="profileDmBtn" class="modal-btn primary">DM Ac</button>
+  `);
+
+  document.getElementById('profileDmBtn').onclick = () => {
+    hideModal();
+    openDm(username);
+  };
+
+  if (username === currentUser) {
+    document.getElementById('saveAvatarBtn').onclick = async () => {
+      const file = document.getElementById('avatarFileInput').files?.[0];
+      if (!file) {
+        alert('Lutfen bir gorsel sec.');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          await request(API.avatar, {
+            method: 'POST',
+            body: JSON.stringify({
+              username: currentUser,
+              avatar: reader.result
+            })
+          });
+          const targetUser = getUserRecord(currentUser);
+          if (targetUser) {
+            targetUser.avatar = reader.result;
+          }
+          hideModal();
+          renderAll();
+          showToast('Profil fotosu guncellendi.');
+        } catch (error) {
+          alert(error.message);
+        }
+      };
+      reader.readAsDataURL(file);
+    };
+  }
+}
+
+function renderSidebarTab() {
+  const isDm = activeSidebarTab === 'dm';
+  membersTabBtn.classList.toggle('active', !isDm);
+  dmTabBtn.classList.toggle('active', isDm);
+  memberList.classList.toggle('hidden', isDm);
+  dmList.classList.toggle('hidden', !isDm);
+  renderDmList();
+}
+
+function renderVoicePanel() {
+  const channel = getCurrentChannel();
+  const server = getCurrentServer();
+  const voiceMembers = getCurrentVoiceMembers();
+  const activeVoiceChannel =
+    server?.categories.flatMap((category) => category.channels).find((item) => item.id === currentVoiceChannelId) || null;
+
+  const targetChannel = channel?.kind === 'voice' ? channel : activeVoiceChannel;
+  const title = targetChannel ? targetChannel.name : 'voice-lounge';
+  const list = targetChannel ? appState.voicePresence[targetChannel.id] || [] : voiceMembers;
+
+  voicePanel.innerHTML = `
+    <div class="panel-title">Voice Room</div>
+    <div class="voice-name">${title}</div>
+    <div class="voice-subtitle">Join/leave simulasyonu ve anlik presence</div>
+    <div class="voice-members">
+      ${(list.length ? list : ['Kimse odada degil.'])
+        .map((username) => `<div class="voice-member">${username}</div>`)
+        .join('')}
+    </div>
+  `;
+}
+
+function renderReports() {
+  const server = getCurrentServer();
+  reportList.innerHTML = '';
+  if (!server) {
+    return;
+  }
+
+  const reports = server.reports.slice(0, 5);
+  reportList.innerHTML = reports.length
+    ? reports
+        .map(
+          (report) => `
+            <div class="report-card">
+              <div><strong>${report.targetUser}</strong> icin rapor</div>
+              <div>${report.reason}</div>
+              <div class="report-meta">${report.reporter} • ${formatTime(report.time)} • ${report.status}</div>
+            </div>
+          `
+        )
+        .join('')
+    : '<div class="empty-state">Henuz rapor yok.</div>';
+}
+
+function renderPolls() {
+  const server = getCurrentServer();
+  pollList.innerHTML = '';
+  if (!server) {
+    return;
+  }
+
+  const polls = server.polls.slice(0, 4);
+  pollList.innerHTML = polls.length
+    ? polls
+        .map(
+          (poll) => `
+            <div class="poll-card">
+              <div><strong>${poll.question}</strong></div>
+              <div>${poll.options.map((option) => option.label).join(' / ')}</div>
+              <div class="report-meta">${poll.createdBy} • ${formatTime(poll.time)}</div>
+            </div>
+          `
+        )
+        .join('')
+    : '<div class="empty-state">/poll komutuyla anket olustur.</div>';
+}
+
+function renderPermissions() {
+  const server = getCurrentServer();
+  permissionsList.innerHTML = '';
+  if (!server) {
+    return;
+  }
+
+  const rows = server.categories
+    .flatMap((category) => category.channels.map((channel) => ({ category: category.name, channel })));
+
+  permissionsList.innerHTML = rows.length
+    ? rows
+        .map(
+          ({ category, channel }) => `
+            <div class="permission-card">
+              <div><strong>${category} / ${channel.name}</strong></div>
+              <div class="report-meta">${channel.kind}</div>
+              <div class="permission-tags">
+                ${channel.allowedRoles.map((role) => `<span class="mini-tag">${role}</span>`).join('')}
+              </div>
+            </div>
+          `
+        )
+        .join('')
+    : '<div class="empty-state">Henuz kanal izni yok.</div>';
+}
+
+function renderAll() {
+  renderServers();
+  renderChannels();
+  renderHeader();
+  renderMessages();
+  renderMembers();
+  renderSidebarTab();
+  renderVoicePanel();
+  renderReports();
+  renderPolls();
+  renderPermissions();
+  renderVideoPanel();
+  renderTypingIndicator();
+}
+
+function renderTypingIndicator() {
+  if (activeSidebarTab === 'dm' && activeDmUser) {
+    const users = (appState.typingState[dmScopeKey(activeDmUser)] || []).filter((user) => user !== currentUser);
+    if (users.length) {
+      helperText.textContent = `${users.join(', ')} yaziyor...`;
+      return;
+    }
+  }
+
+  if (activeSidebarTab === 'members' && currentChannelId) {
+    const users = (appState.typingState[`channel:${currentChannelId}`] || []).filter((user) => user !== currentUser);
+    if (users.length) {
+      helperText.textContent = `${users.join(', ')} yaziyor...`;
+      return;
+    }
+  }
+}
+
+function switchServer(serverId) {
+  currentServerId = serverId;
+  const server = getCurrentServer();
+  const firstChannel = server?.categories[0]?.channels[0];
+  if (firstChannel) {
+    switchChannel(firstChannel.id);
+  }
+  renderAll();
+}
+
+function switchChannel(channelId) {
+  activeSidebarTab = 'members';
+  activeDmUser = null;
+  currentChannelId = channelId;
+  const server = getCurrentServer();
+  const channel = getCurrentChannel();
+  if (!server || !channel) {
+    return;
+  }
+
+  if (channel.kind === 'voice') {
+    showToast('Bu kanal sesli oda. Join Voice ile katilabilirsin.');
+  } else {
+    showToast('Slash komutlari: /help, /stats, /poll soru | secenek1 | secenek2');
+  }
+
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'switchChannel',
+      username: currentUser,
+      serverId: currentServerId,
+      channelId
+    }));
+  }
+  renderAll();
+}
+
+function openDm(username) {
+  activeSidebarTab = 'dm';
+  activeDmUser = username;
+  unreadDmCounts[username] = 0;
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'openDm',
+      username: currentUser,
+      peerUsername: username
+    }));
+  }
+  renderAll();
+}
+
+function connectWS() {
+  ws = new WebSocket(`${wsProtocol()}://${location.host}`);
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: 'identify', username: currentUser }));
+    if (currentServerId && currentChannelId) {
+      ws.send(JSON.stringify({
+        type: 'switchChannel',
+        username: currentUser,
+        serverId: currentServerId,
+        channelId: currentChannelId
+      }));
+    }
+  };
+
+  ws.onmessage = (event) => {
+    const data = JSON.parse(event.data);
+
+    if (data.type === 'messages') {
+      if (activeSidebarTab === 'members') {
+        appState.messages[data.channelId] = data.messages;
+      }
+      renderMessages();
+      return;
+    }
+
+    if (data.type === 'dmMessages') {
+      const previousCount = (appState.directMessages[data.peerUsername] || []).length;
+      appState.directMessages[data.peerUsername] = data.messages;
+      if (activeSidebarTab === 'dm' && activeDmUser === data.peerUsername) {
+        unreadDmCounts[data.peerUsername] = 0;
+        renderMessages();
+      } else {
+        const incomingCount = Math.max(0, data.messages.length - previousCount);
+        unreadDmCounts[data.peerUsername] = (unreadDmCounts[data.peerUsername] || 0) + incomingCount;
+        if (incomingCount > 0) {
+          playNotificationSound();
+          showToast(`${data.peerUsername} sana DM gonderdi.`);
+          const latestMessage = data.messages[data.messages.length - 1];
+          showBrowserNotification(`${data.peerUsername} sana DM gonderdi`, latestMessage?.text || 'Yeni mesaj');
+        }
+      }
+      renderDmList();
+      return;
+    }
+
+    if (data.type === 'message') {
+      const { channelId, message } = data;
+      if (!appState.messages[channelId]) {
+        appState.messages[channelId] = [];
+      }
+      appState.messages[channelId].push(message);
+      if (message.user !== currentUser) {
+        playNotificationSound();
+        showBrowserNotification(`${message.user} yeni mesaj`, message.text || 'Yeni kanal mesaji');
+      }
+      if (channelId === currentChannelId) {
+        renderMessages();
+        if (message.user !== currentUser) {
+          showToast(`${message.user} yeni mesaj gonderdi.`);
+        }
+      }
+      return;
+    }
+
+    if (data.type === 'messageUpdated') {
+      const list = appState.messages[data.channelId] || [];
+      const index = list.findIndex((message) => message.id === data.message.id);
+      if (index >= 0) {
+        list[index] = data.message;
+      } else {
+        list.push(data.message);
+      }
+      if (data.channelId === currentChannelId) {
+        renderMessages();
+      }
+      return;
+    }
+
+    if (data.type === 'messageDeleted') {
+      const list = appState.messages[data.channelId] || [];
+      appState.messages[data.channelId] = list.filter((message) => message.id !== data.messageId);
+      if (data.channelId === currentChannelId) {
+        renderMessages();
+      }
+      return;
+    }
+
+    if (data.type === 'stateUpdated') {
+      appState.users = data.users;
+      appState.presence = data.presence;
+      appState.voicePresence = data.voicePresence;
+      appState.callPresence = data.callPresence || {};
+      appState.typingState = data.typingState || {};
+      currentVoiceChannelId = appState.presence[currentUser]?.voiceChannelId || null;
+      renderMembers();
+      renderDmList();
+      renderVoicePanel();
+      renderHeader();
+      renderVideoPanel();
+      renderTypingIndicator();
+      return;
+    }
+
+    if (data.type === 'serverUpdated') {
+      const index = appState.servers.findIndex((server) => server.id === data.server.id);
+      if (index >= 0) {
+        appState.servers[index] = data.server;
+      } else {
+        appState.servers.push(data.server);
+      }
+      appState.messages = data.messages;
+      appState.directMessages = data.directMessages || appState.directMessages;
+      appState.voicePresence = data.voicePresence;
+      appState.presence = data.presence;
+      appState.callPresence = data.callPresence || {};
+      appState.typingState = data.typingState || {};
+      currentVoiceChannelId = appState.presence[currentUser]?.voiceChannelId || null;
+      renderAll();
+      return;
+    }
+
+    if (data.type === 'typingState') {
+      appState.typingState[data.scopeKey] = data.users || [];
+      renderTypingIndicator();
+      return;
+    }
+
+    if (data.type === 'callState') {
+      appState.callPresence[data.channelId] = data.participants || [];
+      if ((data.participants || []).includes(currentUser)) {
+        activeCallChannelId = data.channelId;
+      }
+      renderVideoPanel();
+      const peers = (data.participants || []).filter((username) => username !== currentUser);
+      peers.forEach((peerUsername) => {
+        if (currentUser < peerUsername && localStream) {
+          initiateOffer(peerUsername).catch(() => showToast('Video baglantisi baslatilamadi.'));
+        }
+      });
+      return;
+    }
+
+    if (data.type === 'callLeft') {
+      if (data.channelId && appState.callPresence[data.channelId]) {
+        appState.callPresence[data.channelId] = appState.callPresence[data.channelId].filter((item) => item !== data.username);
+      }
+      if (data.username === currentUser) {
+        activeCallChannelId = null;
+      }
+      closePeerConnection(data.username);
+      renderVideoPanel();
+      return;
+    }
+
+    if (data.type === 'webrtcSignal') {
+      handleIncomingSignal(data).catch(() => showToast('Goruntulu konusma sinyali islenemedi.'));
+      return;
+    }
+
+    if (data.type === 'system') {
+      showToast(data.text);
+      return;
+    }
+
+    if (data.type === 'error') {
+      alert(data.message);
+    }
+  };
+
+  ws.onclose = () => {
+    setTimeout(connectWS, 1000);
+  };
+}
+
+async function bootstrap() {
+  const data = await request(`${API.bootstrap}?username=${encodeURIComponent(currentUser)}`);
+  appState = data;
+  unreadDmCounts = {};
+  currentServerId = appState.servers[0]?.id || null;
+  currentChannelId = appState.servers[0]?.categories[0]?.channels[0]?.id || null;
+  currentVoiceChannelId = appState.presence[currentUser]?.voiceChannelId || null;
+  appState.callPresence = appState.callPresence || {};
+  presenceSelect.value = appState.presence[currentUser]?.status || 'online';
+  renderAll();
+  connectWS();
+}
+
 function showLogin() {
   showModal(`
-    <h2 class="text-xl mb-4">Login</h2>
-    <input id="loginUser" class="w-full mb-2 px-2 py-1 rounded bg-gray-700" placeholder="Username" />
-    <input id="loginPass" type="password" class="w-full mb-4 px-2 py-1 rounded bg-gray-700" placeholder="Password" />
-    <button id="loginSubmit" class="w-full bg-blue-600 py-1 rounded hover:bg-blue-700 mb-2">Login</button>
-    <button id="showRegister" class="w-full text-sm text-gray-300 hover:underline">Register</button>
+    <h2>Topluluk Sunucusu Giris</h2>
+    <p class="modal-copy">Demo hesaplar: admin/123, moderator/123, student/123</p>
+    <input id="loginUser" class="modal-input" placeholder="Kullanici adi" />
+    <input id="loginPass" class="modal-input" type="password" placeholder="Sifre" />
+    <button id="loginSubmit" class="modal-btn primary">Giris Yap</button>
+    <button id="showRegister" class="modal-btn secondary">Kayit Ol</button>
   `);
+
   document.getElementById('loginSubmit').onclick = async () => {
-    const username = document.getElementById('loginUser').value.trim();
-    const password = document.getElementById('loginPass').value;
-    if (!username || !password) return alert('Please enter username and password.');
-    const res = await fetch(API.login, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
-    if (res.ok) {
-      currentUser = username;
+    try {
+      currentUser = document.getElementById('loginUser').value.trim();
+      const password = document.getElementById('loginPass').value;
+      await request(API.login, { method: 'POST', body: JSON.stringify({ username: currentUser, password }) });
       hideModal();
-      initApp();
-    } else {
-      alert('Login failed.');
+      document.getElementById('appShell').classList.remove('hidden');
+      bootstrap();
+    } catch (error) {
+      alert(error.message);
     }
   };
+
   document.getElementById('showRegister').onclick = showRegister;
 }
+
 function showRegister() {
   showModal(`
-    <h2 class="text-xl mb-4">Register</h2>
-    <input id="regUser" class="w-full mb-2 px-2 py-1 rounded bg-gray-700" placeholder="Username" />
-    <input id="regPass" type="password" class="w-full mb-4 px-2 py-1 rounded bg-gray-700" placeholder="Password" />
-    <button id="registerSubmit" class="w-full bg-green-600 py-1 rounded hover:bg-green-700 mb-2">Register</button>
-    <button id="showLogin" class="w-full text-sm text-gray-300 hover:underline">Back to Login</button>
+    <h2>Yeni Uye</h2>
+    <p class="modal-copy">Kayit olan herkes mevcut sunuculara member olarak eklenir.</p>
+    <input id="regUser" class="modal-input" placeholder="Kullanici adi" />
+    <input id="regPass" class="modal-input" type="password" placeholder="Sifre" />
+    <input id="regAvatar" class="modal-input" type="file" accept="image/*" />
+    <button id="registerSubmit" class="modal-btn primary">Kayit Ol</button>
+    <button id="showLogin" class="modal-btn secondary">Geri Don</button>
   `);
+
   document.getElementById('registerSubmit').onclick = async () => {
-    const username = document.getElementById('regUser').value.trim();
-    const password = document.getElementById('regPass').value;
-    if (!username || !password) return alert('Please enter username and password.');
-    const res = await fetch(API.register, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username, password }) });
-    if (res.ok) {
-      alert('Registration successful! Please login.');
-      showLogin();
-    } else {
-      alert('Registration failed.');
+    try {
+      const username = document.getElementById('regUser').value.trim();
+      const password = document.getElementById('regPass').value;
+      const file = document.getElementById('regAvatar').files?.[0];
+
+      const submitRegister = async (avatar = null) => {
+        await request(API.register, {
+          method: 'POST',
+          body: JSON.stringify({ username, password, avatar })
+        });
+        alert('Kayit tamam. Giris yapabilirsin.');
+        showLogin();
+      };
+
+      if (!file) {
+        await submitRegister(null);
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onload = async () => {
+        try {
+          await submitRegister(reader.result);
+        } catch (error) {
+          alert(error.message);
+        }
+      };
+      reader.readAsDataURL(file);
+    } catch (error) {
+      alert(error.message);
     }
   };
+
   document.getElementById('showLogin').onclick = showLogin;
 }
 
-// --- Channel Logic ---
-async function fetchChannelsAndUsers() {
-  const [chRes, uRes] = await Promise.all([
-    fetch(API.channels),
-    fetch(API.users)
-  ]);
-  channels = await chRes.json();
-  users = await uRes.json();
-  renderChannels();
-  updateInviteBtn();
-}
-async function createChannel() {
-  showModal(`
-    <h2 class="text-xl mb-4">Create Channel</h2>
-    <input id="channelName" class="w-full mb-2 px-2 py-1 rounded bg-gray-700" placeholder="Channel name" />
-    <select id="channelType" class="w-full mb-4 px-2 py-1 rounded bg-gray-700">
-      <option value="public">Public</option>
-      <option value="private">Private</option>
-    </select>
-    <button id="createSubmit" class="w-full bg-blue-600 py-1 rounded hover:bg-blue-700">Create</button>
-  `);
-  document.getElementById('createSubmit').onclick = async () => {
-    const name = document.getElementById('channelName').value.trim();
-    const type = document.getElementById('channelType').value;
-    if (!name) return alert('Enter channel name.');
-    const res = await fetch(API.createChannel, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name, type, creator: currentUser }) });
-    if (res.ok) {
-      hideModal();
-      // Channel update will be handled by WebSocket broadcast
-    } else {
-      alert('Channel creation failed.');
-    }
-  };
-}
-function switchChannel(name) {
-  if (!joinedChannels.has(name)) joinChannel(name);
-  currentChannel = name;
-  currentChannelSpan.textContent = (channels.find(c => c.name === name)?.type === 'private' ? '🔒 ' : '#') + name;
-  updateInviteBtn();
-  fetchMessages(name);
-  renderChannels();
-}
-function joinChannel(name) {
-  ws.send(JSON.stringify({ type: 'join', user: currentUser, channel: name }));
-  joinedChannels.add(name);
-}
-function leaveChannel(name) {
-  ws.send(JSON.stringify({ type: 'leave', user: currentUser, channel: name }));
-  joinedChannels.delete(name);
-  if (currentChannel === name) switchChannel('general');
-  renderChannels();
-}
-function showInvite() {
-  const ch = channels.find(c => c.name === currentChannel);
-  if (!ch || ch.type !== 'private') return;
-  showModal(`
-    <h2 class="text-xl mb-4">Invite to #${currentChannel}</h2>
-    <select id="inviteUser" class="w-full mb-4 px-2 py-1 rounded bg-gray-700">
-      ${users.filter(u => u !== currentUser && !ch.members.includes(u)).map(u => `<option value="${u}">${u}</option>`).join('')}
-    </select>
-    <button id="inviteSubmit" class="w-full bg-green-600 py-1 rounded hover:bg-green-700">Invite</button>
-  `);
-  document.getElementById('inviteSubmit').onclick = () => {
-    const invitee = document.getElementById('inviteUser').value;
-    ws.send(JSON.stringify({ type: 'invite', channel: currentChannel, invitee }));
-    hideModal();
-  };
-}
-
-// --- Messaging ---
 function sendMessage() {
-  const msg = messageInput.value.trim();
-  if (!msg) return;
-  ws.send(JSON.stringify({ type: 'message', channel: currentChannel, user: currentUser, msg }));
+  const text = messageInput.value.trim();
+  const channel = getCurrentChannel();
+  if (!text) {
+    return;
+  }
+
+  if (activeSidebarTab === 'dm' && activeDmUser) {
+    ws.send(JSON.stringify({
+      type: 'dmMessage',
+      username: currentUser,
+      peerUsername: activeDmUser,
+      text
+    }));
+    messageInput.value = '';
+    return;
+  }
+
+  if (!channel) {
+    return;
+  }
+
+  if (channel.kind === 'voice') {
+    alert('Sesli odalara yazi mesaji yerine join/leave mantigi uygulanir.');
+    return;
+  }
+
+  ws.send(JSON.stringify({
+    type: 'message',
+    serverId: currentServerId,
+    channelId: currentChannelId,
+    username: currentUser,
+    text
+  }));
   messageInput.value = '';
-}
-function fetchMessages(channel) {
-  ws.send(JSON.stringify({ type: 'fetchMessages', channel }));
+  if (ws?.readyState === WebSocket.OPEN) {
+    ws.send(JSON.stringify({
+      type: 'typing',
+      scope: activeSidebarTab === 'dm' && activeDmUser ? 'dm' : 'channel',
+      username: currentUser,
+      peerUsername: activeDmUser,
+      channelId: currentChannelId,
+      isTyping: false
+    }));
+  }
 }
 
-// --- WebSocket ---
-function connectWS() {
-  ws = new WebSocket(`ws://${location.host}`);
-  ws.onopen = () => {
-    joinedChannels.forEach(ch => ws.send(JSON.stringify({ type: 'join', user: currentUser, channel: ch })));
-    fetchChannelsAndUsers();
-    fetchMessages(currentChannel);
+async function createServer() {
+  showModal(`
+    <h2>Sunucu Olustur</h2>
+    <input id="serverName" class="modal-input" placeholder="Sunucu adi" />
+    <button id="submitServer" class="modal-btn primary">Olustur</button>
+  `);
+
+  document.getElementById('submitServer').onclick = async () => {
+    try {
+      const name = document.getElementById('serverName').value.trim();
+      const data = await request(API.createServer, {
+        method: 'POST',
+        body: JSON.stringify({ name, creator: currentUser })
+      });
+      const existingIndex = appState.servers.findIndex((server) => server.id === data.server.id);
+      if (existingIndex >= 0) {
+        appState.servers[existingIndex] = data.server;
+      } else {
+        appState.servers.push(data.server);
+      }
+      hideModal();
+      switchServer(data.server.id);
+      renderAll();
+    } catch (error) {
+      alert(error.message);
+    }
   };
-  ws.onmessage = (e) => {
-    const data = JSON.parse(e.data);
-    if (data.type === 'message') {
-      if (!messages[data.channel]) messages[data.channel] = [];
-      messages[data.channel].push(data);
-      if (data.channel === currentChannel) renderMessages();
-    }
-    if (data.type === 'messages') {
-      messages[data.channel] = data.messages;
-      if (data.channel === currentChannel) renderMessages();
-    }
-    if (data.type === 'channelsUpdated') {
-      fetchChannelsAndUsers();
-    }
-    if (data.type === 'system') {
-      // Optionally show system messages
+}
+
+function createChannel() {
+  const server = getCurrentServer();
+  if (!server) {
+    return;
+  }
+
+  showModal(`
+    <h2>Kanal Ekle</h2>
+    <input id="channelName" class="modal-input" placeholder="Kanal adi" />
+    <select id="channelKind" class="modal-input">
+      <option value="text">Text</option>
+      <option value="voice">Voice</option>
+    </select>
+    <select id="channelCategory" class="modal-input">
+      ${server.categories.map((category) => `<option value="${category.id}">${category.name}</option>`).join('')}
+    </select>
+    <label class="checkbox-row"><input id="roleMember" type="checkbox" checked /> member</label>
+    <label class="checkbox-row"><input id="roleMod" type="checkbox" checked /> mod</label>
+    <label class="checkbox-row"><input id="roleAdmin" type="checkbox" checked /> admin</label>
+    <button id="submitChannel" class="modal-btn primary">Kaydet</button>
+  `);
+
+  document.getElementById('submitChannel').onclick = async () => {
+    try {
+      const allowedRoles = ['member', 'mod', 'admin'].filter((role) => {
+        const id = `role${role.charAt(0).toUpperCase()}${role.slice(1)}`;
+        return document.getElementById(id).checked;
+      });
+      await request(API.createChannel, {
+        method: 'POST',
+        body: JSON.stringify({
+          serverId: currentServerId,
+          categoryId: document.getElementById('channelCategory').value,
+          name: document.getElementById('channelName').value.trim(),
+          kind: document.getElementById('channelKind').value,
+          allowedRoles,
+          actor: currentUser
+        })
+      });
+      hideModal();
+    } catch (error) {
+      alert(error.message);
     }
   };
-  ws.onclose = () => setTimeout(connectWS, 1000);
 }
 
-// --- App Init ---
-function initApp() {
-  document.getElementById('app').classList.remove('hidden');
-  connectWS();
-  // Event listeners
-  sendBtn.onclick = sendMessage;
-  messageInput.onkeydown = e => { if (e.key === 'Enter') sendMessage(); };
-  createChannelBtn.onclick = createChannel;
-  inviteBtn.onclick = showInvite;
-  logoutBtn.onclick = () => location.reload();
-  modalOverlay.onclick = e => { if (e.target === modalOverlay) hideModal(); };
+function createCategory() {
+  showModal(`
+    <h2>Kategori Ekle</h2>
+    <input id="categoryName" class="modal-input" placeholder="Kategori adi" />
+    <button id="submitCategory" class="modal-btn primary">Kaydet</button>
+  `);
+
+  document.getElementById('submitCategory').onclick = async () => {
+    try {
+      await request(API.createCategory, {
+        method: 'POST',
+        body: JSON.stringify({
+          serverId: currentServerId,
+          name: document.getElementById('categoryName').value.trim(),
+          actor: currentUser
+        })
+      });
+      hideModal();
+    } catch (error) {
+      alert(error.message);
+    }
+  };
 }
 
-// --- Start ---
+function assignRole() {
+  const server = getCurrentServer();
+  showModal(`
+    <h2>Rol Ata</h2>
+    <select id="roleUser" class="modal-input">
+      ${server.members.map((member) => `<option value="${member.username}">${member.username}</option>`).join('')}
+    </select>
+    <select id="roleValue" class="modal-input">
+      <option value="member">member</option>
+      <option value="mod">mod</option>
+      <option value="admin">admin</option>
+    </select>
+    <button id="submitRole" class="modal-btn primary">Guncelle</button>
+  `);
+
+  document.getElementById('submitRole').onclick = async () => {
+    try {
+      await request(API.changeRole, {
+        method: 'POST',
+        body: JSON.stringify({
+          serverId: currentServerId,
+          targetUser: document.getElementById('roleUser').value,
+          role: document.getElementById('roleValue').value,
+          actor: currentUser
+        })
+      });
+      hideModal();
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+}
+
+function moderateUser() {
+  const server = getCurrentServer();
+  showModal(`
+    <h2>Moderasyon</h2>
+    <select id="modUser" class="modal-input">
+      ${server.members.filter((member) => member.username !== currentUser).map((member) => `<option value="${member.username}">${member.username}</option>`).join('')}
+    </select>
+    <select id="modAction" class="modal-input">
+      <option value="mute">mute</option>
+      <option value="unmute">unmute</option>
+      <option value="ban">ban</option>
+    </select>
+    <input id="modReason" class="modal-input" placeholder="Sebep" />
+    <button id="submitMod" class="modal-btn primary">Uygula</button>
+  `);
+
+  document.getElementById('submitMod').onclick = async () => {
+    try {
+      await request(API.moderation, {
+        method: 'POST',
+        body: JSON.stringify({
+          serverId: currentServerId,
+          targetUser: document.getElementById('modUser').value,
+          action: document.getElementById('modAction').value,
+          reason: document.getElementById('modReason').value.trim(),
+          actor: currentUser
+        })
+      });
+      hideModal();
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+}
+
+function reportUser() {
+  const server = getCurrentServer();
+  showModal(`
+    <h2>Mesaj Raporla</h2>
+    <select id="reportUser" class="modal-input">
+      ${server.members.filter((member) => member.username !== currentUser).map((member) => `<option value="${member.username}">${member.username}</option>`).join('')}
+    </select>
+    <input id="reportReason" class="modal-input" placeholder="Rapor nedeni" />
+    <button id="submitReport" class="modal-btn primary">Gonder</button>
+  `);
+
+  document.getElementById('submitReport').onclick = async () => {
+    try {
+      await request(API.report, {
+        method: 'POST',
+        body: JSON.stringify({
+          serverId: currentServerId,
+          reporter: currentUser,
+          targetUser: document.getElementById('reportUser').value,
+          channelId: currentChannelId,
+          reason: document.getElementById('reportReason').value.trim()
+        })
+      });
+      hideModal();
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+}
+
+function toggleVoice() {
+  const channel = getCurrentChannel();
+  const server = getCurrentServer();
+  if (!server) {
+    return;
+  }
+
+  if (currentVoiceChannelId) {
+    ws.send(JSON.stringify({
+      type: 'leaveVoice',
+      username: currentUser,
+      serverId: currentServerId
+    }));
+    currentVoiceChannelId = null;
+    renderVoicePanel();
+    renderHeader();
+    return;
+  }
+
+  if (!channel || channel.kind !== 'voice') {
+    alert('Bir sesli kanala gec ve sonra Join Voice kullan.');
+    return;
+  }
+
+  currentVoiceChannelId = channel.id;
+  ws.send(JSON.stringify({
+    type: 'joinVoice',
+    username: currentUser,
+    serverId: currentServerId,
+    channelId: channel.id
+  }));
+  renderVoicePanel();
+  renderHeader();
+}
+
+function joinVoice() {
+  if (!currentVoiceChannelId) {
+    toggleVoice();
+  }
+}
+
+function leaveVoice() {
+  if (currentVoiceChannelId) {
+    toggleVoice();
+  }
+}
+
+async function startVideoCall() {
+  const channel = getCurrentChannel();
+  if (!channel) {
+    return;
+  }
+
+  if (channel.kind !== 'voice') {
+    alert('Goruntulu konusma icin once bir sesli oda kanalina gec.');
+    return;
+  }
+
+  try {
+    await ensureLocalMedia();
+    activeCallChannelId = currentChannelId;
+    ws.send(JSON.stringify({
+      type: 'joinCall',
+      username: currentUser,
+      serverId: currentServerId,
+      channelId: currentChannelId
+    }));
+    showToast('Goruntulu konusma baslatildi.');
+    renderVideoPanel();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : explainMediaError(error);
+    lastCallCapabilityMessage = message;
+    renderVideoPanel();
+    alert(message);
+  }
+}
+
+function stopLocalMedia() {
+  if (localStream) {
+    localStream.getTracks().forEach((track) => track.stop());
+    localStream = null;
+  }
+}
+
+function endVideoCall() {
+  if (!activeCallChannelId && !localStream) {
+    return;
+  }
+
+  ws.send(JSON.stringify({
+    type: 'leaveCall',
+    username: currentUser,
+    channelId: activeCallChannelId || currentChannelId
+  }));
+  stopLocalMedia();
+  activeCallChannelId = null;
+  cleanupCallUi();
+  showToast('Goruntulu konusma sonlandirildi.');
+}
+
+function toggleMic() {
+  if (!localStream) {
+    showToast('Once goruntulu konusma baslat.');
+    return;
+  }
+  micEnabled = !micEnabled;
+  localStream.getAudioTracks().forEach((track) => {
+    track.enabled = micEnabled;
+  });
+  renderVideoPanel();
+  showToast(micEnabled ? 'Mikrofon acildi.' : 'Mikrofon kapatildi.');
+}
+
+function toggleCamera() {
+  if (!localStream) {
+    showToast('Once goruntulu konusma baslat.');
+    return;
+  }
+  cameraEnabled = !cameraEnabled;
+  localStream.getVideoTracks().forEach((track) => {
+    track.enabled = cameraEnabled;
+  });
+  renderVideoPanel();
+  showToast(cameraEnabled ? 'Kamera acildi.' : 'Kamera kapatildi.');
+}
+
+function showSearchModal() {
+  const list = (appState.messages[currentChannelId] || []).slice(-20);
+  showModal(`
+    <h2>Kanalda Ara</h2>
+    <input id="searchInput" class="modal-input" placeholder="Kelime yaz" />
+    <div id="searchResults" class="panel-subtitle">Son 20 mesaj aranacak.</div>
+  `);
+
+  const input = document.getElementById('searchInput');
+  const results = document.getElementById('searchResults');
+  input.oninput = () => {
+    const q = input.value.trim().toLowerCase();
+    const matches = list.filter((message) => message.text.toLowerCase().includes(q));
+    results.innerHTML = q
+      ? (matches.length
+          ? matches.map((message) => `<div class="report-card"><strong>${escapeHtml(message.user)}</strong><div>${escapeHtml(message.text)}</div></div>`).join('')
+          : 'Mesaj bulunamadi.')
+      : 'Son 20 mesaj aranacak.';
+  };
+}
+
+function showPinnedInfo() {
+  const server = getCurrentServer();
+  const channel = getCurrentChannel();
+  showModal(`
+    <h2>Kanal Bilgisi</h2>
+    <div class="report-card"><strong>Sunucu</strong><div>${escapeHtml(server?.name || '-')}</div></div>
+    <div class="report-card"><strong>Kanal</strong><div>${escapeHtml(channel?.name || '-')}</div></div>
+    <div class="report-card"><strong>Rolun</strong><div>${escapeHtml(myRole())}</div></div>
+  `);
+}
+
+function toggleMembersPanel() {
+  sidebar.classList.toggle('hidden-panel');
+}
+
+function handleNavInfo(section) {
+  const texts = {
+    home: 'Sunucu genel panelindesin.',
+    chat: 'Sohbet moduna geri donuldu.',
+    game: 'Oyunlar ikonu simdilik demo bilgilendirme aciyor.',
+    apps: 'Araclar ikonu kanal yonetimini temsil ediyor.'
+  };
+  showToast(texts[section]);
+}
+
 window.onload = () => {
-  document.getElementById('app').classList.add('hidden');
+  applyTheme(currentTheme);
+  document.getElementById('appShell').classList.add('hidden');
   showLogin();
-}; 
+  document.body.addEventListener('click', () => {
+    ensureNotificationsEnabled();
+    if (audioContext?.state === 'suspended') {
+      audioContext.resume();
+    }
+  }, { once: true });
+
+  sendBtn.onclick = sendMessage;
+  messageInput.onkeydown = (event) => {
+    if (event.key === 'Enter') {
+      sendMessage();
+    }
+  };
+  messageInput.oninput = () => {
+    if (!ws || ws.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    ws.send(JSON.stringify({
+      type: 'typing',
+      scope: activeSidebarTab === 'dm' && activeDmUser ? 'dm' : 'channel',
+      username: currentUser,
+      peerUsername: activeDmUser,
+      channelId: currentChannelId,
+      isTyping: Boolean(messageInput.value.trim())
+    }));
+
+    clearTimeout(typingTimer);
+    typingTimer = setTimeout(() => {
+      if (ws?.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'typing',
+          scope: activeSidebarTab === 'dm' && activeDmUser ? 'dm' : 'channel',
+          username: currentUser,
+          peerUsername: activeDmUser,
+          channelId: currentChannelId,
+          isTyping: false
+        }));
+      }
+    }, 1200);
+  };
+  modalOverlay.onclick = (event) => {
+    if (event.target === modalOverlay) {
+      hideModal();
+    }
+  };
+  createServerBtn.onclick = createServer;
+  createCategoryBtn.onclick = createCategory;
+  createChannelBtn.onclick = createChannel;
+  assignRoleBtn.onclick = assignRole;
+  moderateBtn.onclick = moderateUser;
+  reportBtn.onclick = reportUser;
+  joinVoiceBtn.onclick = joinVoice;
+  leaveVoiceBtn.onclick = leaveVoice;
+  logoutBtn.onclick = () => location.reload();
+  themeToggleBtn.onclick = () => {
+    applyTheme(currentTheme === 'dark' ? 'light' : 'dark');
+  };
+  startVideoBtn.onclick = startVideoCall;
+  endVideoBtn.onclick = endVideoCall;
+  toggleMicBtn.onclick = toggleMic;
+  toggleCameraBtn.onclick = toggleCamera;
+  videoBtn.onclick = startVideoCall;
+  searchBtn.onclick = showSearchModal;
+  pinBtn.onclick = showPinnedInfo;
+  membersToggleBtn.onclick = toggleMembersPanel;
+  membersTabBtn.onclick = () => {
+    activeSidebarTab = 'members';
+    activeDmUser = null;
+    renderAll();
+  };
+  dmTabBtn.onclick = () => {
+    activeSidebarTab = 'dm';
+    if (!activeDmUser) {
+      activeDmUser = appState.users.find((user) => user.username !== currentUser)?.username || null;
+    }
+    if (activeDmUser) {
+      openDm(activeDmUser);
+    } else {
+      renderAll();
+    }
+  };
+  navHomeBtn.onclick = () => handleNavInfo('home');
+  navChatBtn.onclick = () => handleNavInfo('chat');
+  navGameBtn.onclick = () => handleNavInfo('game');
+  navAppsBtn.onclick = () => handleNavInfo('apps');
+
+  presenceSelect.onchange = async () => {
+    try {
+      await request(API.presence, {
+        method: 'POST',
+        body: JSON.stringify({ username: currentUser, status: presenceSelect.value })
+      });
+      appState.presence[currentUser] = appState.presence[currentUser] || {};
+      appState.presence[currentUser].status = presenceSelect.value;
+      renderMembers();
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+};

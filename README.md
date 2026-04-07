@@ -34,6 +34,27 @@ web_socket/
    ```
 3. Open your browser at [http://localhost:3000](http://localhost:3000)
 
+## Open In VS Code
+1. Open the folder `/Users/nehir/Documents/New project` in VS Code.
+2. Or open the workspace file `web_chat.code-workspace`.
+3. Run the VS Code task `Install Backend Dependencies`.
+4. Then use:
+   - `Run and Debug` -> `Run Community Server`, or
+   - task `Start App`
+5. Open `http://localhost:3000`
+
+## Project Checklist For Demo
+- Server creation
+- Category creation
+- Channel creation under categories
+- Role matrix: admin / mod / member
+- Role-based channel visibility
+- Moderation: mute / unmute / ban
+- Message reporting
+- Voice room join / leave simulation
+- Presence status: online / away / busy
+- Slash commands: `/help`, `/stats`, `/poll`
+
 ## ASCII Architecture Diagram
 
 ```
@@ -80,6 +101,44 @@ web_socket/
 ---
 
 **Enjoy your Discord-like chat app!** 
+
+## Render Deploy
+
+This project is now prepared for a single-service Render deployment with Docker.
+
+### Files added for deployment
+- `Dockerfile`: Builds the backend and serves the frontend from the same Node process
+- `render.yaml`: Lets Render detect the web service automatically
+- `.dockerignore`: Keeps the Docker build context smaller
+
+### Deploy steps
+1. Push this repository to GitHub.
+2. Go to Render and create a new `Blueprint` or `Web Service` from the repo.
+3. Render will detect `render.yaml` and the root `Dockerfile`.
+4. After the deploy finishes, open the generated Render URL.
+
+### Quick public URL flow
+1. Push your latest code to GitHub.
+2. Open [Render](https://render.com/) and sign in with GitHub.
+3. Click `New +` -> `Blueprint`.
+4. Select this repository.
+5. Wait for the deploy to finish.
+6. Open the generated `https://...onrender.com` URL.
+
+### Why this solves the Wi-Fi limitation
+- `localhost` and `192.168.x.x` only work on your own machine or local network.
+- A Render URL works over the public internet.
+- WebSocket and browser camera permissions work much better on `https`.
+
+### Health check
+- After deploy, you can test the server with:
+  - `/healthz`
+  - example: `https://your-app.onrender.com/healthz`
+
+### Important note
+- App data is currently stored in `backend/data/state.json`.
+- On Render free instances, local file data may reset after restart/redeploy.
+- If you need permanent production data, move state to a database.
 
 
 # WebSocket Chat Uygulaması
