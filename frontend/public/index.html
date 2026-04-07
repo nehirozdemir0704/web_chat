@@ -53,7 +53,7 @@
 
     .app-shell {
       display: grid;
-      grid-template-columns: 72px 280px 1fr 280px;
+      grid-template-columns: 72px 260px 1fr 250px;
       min-height: 100vh;
     }
 
@@ -66,12 +66,13 @@
 
     .servers {
       border-right: 1px solid var(--line);
-      background: #1e1f22;
+      background: #1a1b1e;
       display: flex;
       flex-direction: column;
       gap: 14px;
       align-items: center;
       justify-content: space-between;
+      padding: 12px 10px;
     }
 
     body.light-mode .servers {
@@ -87,15 +88,16 @@
     }
 
     .server-pill {
-      width: 48px;
-      height: 48px;
+      width: 46px;
+      height: 46px;
       border: 0;
-      border-radius: 16px;
-      background: #2b2d31;
+      border-radius: 50%;
+      background: #313338;
       color: var(--text);
       cursor: pointer;
       transition: transform 0.18s ease, border-radius 0.18s ease, background 0.18s ease;
       font-weight: 700;
+      position: relative;
     }
 
     body.light-mode .server-pill,
@@ -119,35 +121,38 @@
     .server-pill:hover {
       background: var(--accent);
       color: white;
-      border-radius: 14px;
+      border-radius: 16px;
       transform: translateY(-2px);
     }
 
     .icon-btn {
-      width: 48px;
-      height: 48px;
-      border-radius: 16px;
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
       border: 0;
       background: var(--accent);
       color: var(--text);
       cursor: pointer;
       font-size: 24px;
+      box-shadow: 0 10px 24px rgba(88, 101, 242, 0.28);
     }
 
     .channels {
       border-right: 1px solid var(--line);
-      background: var(--panel-2);
+      background: #2b2d31;
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 14px;
+      padding: 12px 10px;
     }
 
     .brand {
-      padding: 8px 0 18px;
+      padding: 6px 6px 12px;
       border-radius: 0;
       background: transparent;
       border: 0;
       box-shadow: none;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
     }
 
     .brand h1,
@@ -163,6 +168,17 @@
     .modal-copy,
     .helper-text {
       color: var(--muted);
+    }
+
+    .brand h1 {
+      font-size: 18px;
+      line-height: 1.1;
+      letter-spacing: 0.01em;
+    }
+
+    .brand p {
+      margin-top: 8px;
+      font-size: 13px;
     }
 
     .action-grid {
@@ -182,10 +198,11 @@
     }
 
     .action-btn {
-      background: #2b2d31;
+      background: #35373c;
       color: var(--text);
       border: 1px solid rgba(255, 255, 255, 0.05);
-      font-size: 13px;
+      font-size: 12px;
+      padding: 10px 12px;
     }
 
     .action-btn.wide {
@@ -194,7 +211,7 @@
 
     .channel-group {
       display: grid;
-      gap: 8px;
+      gap: 4px;
     }
 
     .channel-group-title {
@@ -204,33 +221,37 @@
       letter-spacing: 0.08em;
       display: flex;
       justify-content: space-between;
+      padding: 0 8px;
+      margin-top: 6px;
     }
 
     .channel-item {
       width: 100%;
       display: flex;
       align-items: center;
-      gap: 10px;
+      gap: 8px;
       border: 0;
       cursor: pointer;
-      border-radius: 14px;
+      border-radius: 6px;
       background: transparent;
-      color: var(--text);
-      padding: 10px 12px;
+      color: #b5bac1;
+      padding: 7px 8px;
       text-align: left;
-      font-size: 17px;
+      font-size: 16px;
+      font-weight: 500;
     }
 
     .channel-item.active,
     .channel-item:hover {
       background: #404249;
+      color: #f2f3f5;
     }
 
     .workspace {
       display: grid;
       grid-template-rows: auto 1fr auto;
       gap: 0;
-      background: var(--panel);
+      background: #313338;
     }
 
     .workspace-header,
@@ -244,12 +265,13 @@
     }
 
     .workspace-header {
-      padding: 16px 20px;
+      padding: 14px 18px;
       display: flex;
       justify-content: space-between;
       align-items: center;
       gap: 16px;
       border-bottom: 1px solid var(--line);
+      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
     }
 
     .workspace-meta {
@@ -291,7 +313,7 @@
 
     .chat-area {
       overflow: auto;
-      padding: 2px 4px;
+      padding: 10px 0;
       display: flex;
       flex-direction: column;
       gap: 0;
@@ -379,10 +401,11 @@
     }
 
     .composer {
-      padding: 10px 14px 14px;
+      padding: 10px 16px 16px;
       display: grid;
       gap: 6px;
       border-top: 1px solid var(--line);
+      background: #313338;
     }
 
     .composer-row {
@@ -395,7 +418,7 @@
     .composer select,
     .modal-input {
       width: 100%;
-      border-radius: 12px;
+      border-radius: 8px;
       border: 1px solid rgba(255, 255, 255, 0.08);
       background: #383a40;
       color: var(--text);
@@ -419,13 +442,13 @@
       display: grid;
       gap: 0;
       align-content: start;
-      background: var(--panel-2);
+      background: #2b2d31;
     }
 
     .sidebar-panel {
-      padding: 14px;
+      padding: 12px;
       display: grid;
-      gap: 10px;
+      gap: 8px;
       border-bottom: 1px solid var(--line);
     }
 
@@ -434,10 +457,10 @@
     .poll-card,
     .voice-member,
     .permission-card {
-      border-radius: 16px;
-      padding: 10px;
-      background: #2b2d31;
-      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 10px;
+      padding: 8px 10px;
+      background: #35373c;
+      border: 1px solid rgba(255, 255, 255, 0.03);
     }
 
     .permission-tags {
@@ -470,7 +493,7 @@
 
     .member-name {
       font-weight: 600;
-      font-size: 14px;
+      font-size: 13px;
     }
 
     .member-role,
@@ -481,7 +504,7 @@
     }
 
     .voice-name {
-      font-size: 18px;
+      font-size: 17px;
       font-weight: 700;
     }
 
@@ -566,13 +589,13 @@
       display: grid;
       gap: 12px;
       justify-items: center;
-      padding-top: 8px;
+      padding-top: 4px;
     }
 
     .nav-dot {
-      width: 40px;
-      height: 40px;
-      border-radius: 14px;
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
       background: #313338;
       display: grid;
       place-items: center;
@@ -580,6 +603,14 @@
       font-weight: 700;
       border: 0;
       cursor: pointer;
+      transition: background 0.18s ease, border-radius 0.18s ease, transform 0.18s ease;
+    }
+
+    .nav-dot:hover,
+    .nav-dot:focus-visible {
+      background: var(--accent);
+      border-radius: 16px;
+      transform: translateY(-1px);
     }
 
     .theme-toggle {
@@ -588,18 +619,19 @@
     }
 
     .server-info-card {
-      background: #232428;
-      border-radius: 16px;
-      padding: 16px;
-      border: 1px solid rgba(255, 255, 255, 0.04);
+      background: #2f3136;
+      border-radius: 12px;
+      padding: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.03);
+      box-shadow: none;
     }
 
     .channel-section {
       color: var(--muted);
-      font-size: 12px;
+      font-size: 11px;
       text-transform: uppercase;
       letter-spacing: 0.08em;
-      margin-top: 8px;
+      margin-top: 6px;
     }
 
     .voice-actions {
@@ -612,11 +644,12 @@
     .voice-red,
     .warning-btn {
       border: 0;
-      border-radius: 10px;
-      padding: 10px 12px;
+      border-radius: 8px;
+      padding: 9px 12px;
       color: white;
       font-weight: 700;
       cursor: pointer;
+      font-size: 13px;
     }
 
     .voice-green {
@@ -634,26 +667,37 @@
     .logout-btn {
       background: var(--danger);
       border: 0;
-      border-radius: 10px;
-      padding: 12px 14px;
+      border-radius: 8px;
+      padding: 10px 12px;
       color: white;
       font-weight: 700;
       cursor: pointer;
+      font-size: 13px;
     }
 
     .top-actions {
       display: flex;
-      gap: 12px;
+      gap: 8px;
       color: var(--muted);
       align-items: center;
     }
 
     .icon-action {
       border: 0;
-      background: transparent;
-      color: inherit;
+      background: #2b2d31;
+      color: #b5bac1;
       cursor: pointer;
-      font-size: 16px;
+      font-size: 14px;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+    }
+
+    .icon-action:hover {
+      background: #404249;
+      color: #f2f3f5;
     }
 
     .member-tabs {
@@ -663,8 +707,8 @@
     }
 
     .member-tab {
-      border-radius: 10px;
-      padding: 10px 12px;
+      border-radius: 8px;
+      padding: 9px 10px;
       background: #232428;
       text-align: center;
       font-weight: 700;
@@ -684,6 +728,7 @@
       color: var(--muted);
       font-size: 11px;
       line-height: 1.35;
+      padding: 0 4px;
     }
 
     .message-stack {
@@ -702,8 +747,8 @@
     }
 
     .message-avatar {
-      width: 26px;
-      height: 26px;
+      width: 28px;
+      height: 28px;
       border-radius: 50%;
       display: grid;
       place-items: center;
@@ -772,7 +817,7 @@
 
     .video-card {
       background: #232428;
-      border-radius: 14px;
+      border-radius: 10px;
       overflow: hidden;
       border: 1px solid rgba(255, 255, 255, 0.05);
     }
@@ -819,10 +864,10 @@
     .dm-user {
       border: 0;
       text-align: left;
-      border-radius: 12px;
-      padding: 10px 12px;
-      background: #2b2d31;
-      color: var(--text);
+      border-radius: 8px;
+      padding: 8px 10px;
+      background: #35373c;
+      color: #dbdee1;
       cursor: pointer;
       display: flex;
       justify-content: space-between;
@@ -858,7 +903,7 @@
     .mini-action-btn {
       border: 0;
       border-radius: 8px;
-      padding: 6px 8px;
+      padding: 5px 8px;
       background: rgba(88, 101, 242, 0.18);
       color: var(--text);
       font-size: 11px;
@@ -884,13 +929,13 @@
     <aside class="channels">
       <section class="brand">
         <h1>Topluluk Sunucusu</h1>
-        <p>Discord benzeri sohbet</p>
+        <p>Discord benzeri topluluk alani</p>
       </section>
 
       <section class="server-info-card">
         <div class="channel-section">Sunucu Bilgisi</div>
         <h3 style="margin-bottom:8px;" id="serverInfoName">Web Chat Server</h3>
-        <div class="panel-subtitle">Topluluk sunucusu, DM ve ses odasi destegi</div>
+        <div class="panel-subtitle">Kanallar, DM, voice room ve moderasyon</div>
       </section>
 
       <section class="action-grid">
