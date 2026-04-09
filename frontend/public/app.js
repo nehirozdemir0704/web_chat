@@ -2061,6 +2061,14 @@ function toggleCamera() {
   showToast(cameraEnabled ? 'Kamera acildi.' : 'Kamera kapatildi.');
 }
 
+function normalizeSearchText(value) {
+  return String(value || '')
+    .toLocaleLowerCase('tr')
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/ı/g, 'i');
+}
+
 function showSearchModal() {
   const list = (appState.messages[currentChannelId] || []).slice(-20);
   const users = appState.users.filter((user) => user.username !== currentUser);
@@ -2082,12 +2090,11 @@ function showSearchModal() {
   const userResults = document.getElementById('userSearchResults');
 
   const renderUsers = (q) => {
-    if (!q) {
-      userResults.innerHTML = 'Kullanici adina gore arayip arkadas ekleyebilirsin.';
-      return;
-    }
+    const normalizedQuery = normalizeSearchText(q);
+    const matches = normalizedQuery
+      ? users.filter((user) => normalizeSearchText(user.username).includes(normalizedQuery))
+      : users.slice(0, 12);
 
-    const matches = users.filter((user) => user.username.toLowerCase().includes(q));
     if (!matches.length) {
       userResults.innerHTML = 'Kullanici bulunamadi.';
       return;
@@ -2157,8 +2164,9 @@ function showSearchModal() {
   };
 
   input.oninput = () => {
-    const q = input.value.trim().toLowerCase();
-    const matches = list.filter((message) => message.text.toLowerCase().includes(q));
+    const q = input.value.trim();
+    const normalizedQuery = normalizeSearchText(q);
+    const matches = list.filter((message) => normalizeSearchText(message.text).includes(normalizedQuery));
     renderUsers(q);
     results.innerHTML = q
       ? (matches.length
