@@ -653,7 +653,8 @@ function renderMessages() {
     }
 
     const row = document.createElement('div');
-    row.className = 'message-row';
+    const mentionedMe = message.user !== currentUser && messageMentionsUser(message.text, currentUser);
+    row.className = `message-row ${mentionedMe ? 'mention-highlight' : ''}`;
     const reactions = Object.entries(message.reactions || {})
       .map(([emoji, users]) => {
         const active = users.includes(currentUser) ? 'active' : '';
@@ -690,6 +691,7 @@ function renderMessages() {
           ${activeSidebarTab === 'dm' && message.user === currentUser && activeDmUser
             ? `<span>${(message.seenBy || []).includes(activeDmUser) ? 'goruldu' : 'gonderildi'}</span>`
             : ''}
+          ${mentionedMe ? '<span class="mention-badge">@sen</span>' : ''}
         </div>
         <div class="message-stack">
           <div class="message-body">${escapeHtml(message.text)}</div>
