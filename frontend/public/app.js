@@ -38,6 +38,7 @@ let notificationsEnabled = false;
 const peerConnections = new Map();
 const remoteStreams = new Map();
 let lastCallCapabilityMessage = '';
+let pendingAttachment = null;
 
 const serverList = document.getElementById('serverList');
 const channelTree = document.getElementById('channelTree');
@@ -88,6 +89,7 @@ const composerAddBtn = document.getElementById('composerAddBtn');
 const membersPanelTitle = document.getElementById('membersPanelTitle');
 const membersPanelSubtitle = document.getElementById('membersPanelSubtitle');
 const membersCountPill = document.getElementById('membersCountPill');
+const attachmentInput = document.getElementById('attachmentInput');
 
 let currentTheme = localStorage.getItem('community-theme') || 'dark';
 let micEnabled = true;
@@ -300,11 +302,13 @@ function roleBadgeMarkup(username) {
 
 function getPinnedMessage() {
   const list = getActiveConversationMessages();
-  const pinnedSource = list.find((message) => message.user === 'admin' || message.user === 'system' || message.user === 'bot') || list[0];
+  const server = getCurrentServer();
+  const pinnedIds = server?.pinnedMessageIds || [];
+  const pinnedSource = list.find((message) => pinnedIds.includes(message.id)) || list.find((message) => message.user === 'admin' || message.user === 'system' || message.user === 'bot') || list[0];
   if (!pinnedSource) {
     return 'Bu alanda sabitlenecek onemli mesaj henuz yok.';
   }
-  return pinnedSource.text;
+  return pinnedSource.text || pinnedSource.attachment?.name || 'Sabitlenmis mesaj';
 }
 
 function wsProtocol() {
@@ -597,6 +601,8 @@ function renderMessages() {
   }
 
   let lastDateKey = '';
+  const server = getCurrentServer();
+  const pinnedIds = server?.pinnedMessageIds || [];
   list.forEach((message) => {
     const messageDateKey = new Date(message.time).toDateString();
     if (messageDateKey !== lastDateKey) {
@@ -618,8 +624,19 @@ function renderMessages() {
     const controls = canManageMessage(message)
       ? `
         <div class="message-controls">
+          ${['admin', 'mod'].includes(myRole()) ? `<button class="tiny-action" data-action="pin" data-message-id="${message.id}">${pinnedIds.includes(message.id) ? 'Pinden Cikar' : 'Pinle'}</button>` : ''}
           <button class="tiny-action" data-action="edit" data-message-id="${message.id}">Duzenle</button>
           <button class="tiny-action danger" data-action="delete" data-message-id="${message.id}">Sil</button>
+        </div>
+      `
+      : '';
+    const attachment = message.attachment
+      ? `
+        <div class="attachment-card">
+          ${message.attachment.type?.startsWith('image/')
+            ? `<img class="attachment-image" src="${message.attachment.data}" alt="${escapeHtml(message.attachment.name || 'gorsel')}" />`
+            : `<div class="attachment-file">📎 ${escapeHtml(message.attachment.name || 'dosya')}</div>`}
+          <a class="attachment-link" href="${message.attachment.data}" download="${escapeHtml(message.attachment.name || 'dosya')}">Indir</a>
         </div>
       `
       : '';
@@ -637,6 +654,7 @@ function renderMessages() {
         </div>
         <div class="message-stack">
           <div class="message-body">${escapeHtml(message.text)}</div>
+          ${attachment}
           <div class="reactions-row">${reactions}</div>
           <div class="message-actions-row">
             <div class="reaction-palette">
@@ -687,6 +705,17 @@ function renderMessages() {
       if (action === 'delete') {
         ws.send(JSON.stringify({
           type: 'deleteMessage',
+          serverId: currentServerId,
+          channelId: currentChannelId,
+          username: currentUser,
+          messageId
+        }));
+        return;
+      }
+
+      if (action === 'pin') {
+        ws.send(JSON.stringify({
+          type: 'pinMessage',
           serverId: currentServerId,
           channelId: currentChannelId,
           username: currentUser,
@@ -907,19 +936,36 @@ function renderReports() {
   }
 
   const reports = server.reports.slice(0, 5);
-  reportList.innerHTML = reports.length
-    ? reports
-        .map(
-          (report) => `
-            <div class="report-card">
-              <div><strong>${report.targetUser}</strong> icin rapor</div>
-              <div>${report.reason}</div>
-              <div class="report-meta">${report.reporter} • ${formatTime(report.time)} • ${report.status}</div>
-            </div>
-          `
-        )
-        .join('')
+  const logs = (server.moderationLogs || []).slice(0, 6);
+  const reportMarkup = reports.length
+    ? reports.map(
+        (report) => `
+          <div class="report-card">
+            <div><strong>${report.targetUser}</strong> icin rapor</div>
+            <div>${report.reason}</div>
+            <div class="report-meta">${report.reporter} • ${formatTime(report.time)} • ${report.status}</div>
+          </div>
+        `
+      ).join('')
     : '<div class="empty-state">Henuz rapor yok.</div>';
+  const logMarkup = logs.length
+    ? logs.map(
+        (log) => `
+          <div class="report-card">
+            <div><strong>${escapeHtml(log.action)}</strong> • ${escapeHtml(log.targetUser || '-')}</div>
+            <div>${escapeHtml(log.reason || 'Detay yok')}</div>
+            <div class="report-meta">${escapeHtml(log.actor || 'system')} • ${formatTime(log.time)}</div>
+          </div>
+        `
+      ).join('')
+    : '<div class="empty-state">Henuz moderasyon logu yok.</div>';
+
+  reportList.innerHTML = `
+    <div class="panel-subtitle">Raporlar</div>
+    ${reportMarkup}
+    <div class="panel-subtitle" style="margin-top:8px;">Moderasyon Loglari</div>
+    ${logMarkup}
+  `;
 }
 
 function renderPolls() {
@@ -1320,7 +1366,7 @@ function showRegister() {
 function sendMessage() {
   const text = messageInput.value.trim();
   const channel = getCurrentChannel();
-  if (!text) {
+  if (!text && !pendingAttachment) {
     return;
   }
 
@@ -1329,9 +1375,12 @@ function sendMessage() {
       type: 'dmMessage',
       username: currentUser,
       peerUsername: activeDmUser,
-      text
+      text: text || (pendingAttachment?.name || 'Ek paylasildi'),
+      attachment: pendingAttachment
     }));
     messageInput.value = '';
+    pendingAttachment = null;
+    updateComposerPlaceholder();
     return;
   }
 
@@ -1349,9 +1398,12 @@ function sendMessage() {
     serverId: currentServerId,
     channelId: currentChannelId,
     username: currentUser,
-    text
+    text: text || (pendingAttachment?.name || 'Ek paylasildi'),
+    attachment: pendingAttachment
   }));
   messageInput.value = '';
+  pendingAttachment = null;
+  updateComposerPlaceholder();
   if (ws?.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({
       type: 'typing',
@@ -1362,6 +1414,14 @@ function sendMessage() {
       isTyping: false
     }));
   }
+}
+
+function updateComposerPlaceholder() {
+  if (pendingAttachment?.name) {
+    messageInput.placeholder = `Ek hazir: ${pendingAttachment.name}`;
+    return;
+  }
+  messageInput.placeholder = 'Mesaj gonder';
 }
 
 async function createServer() {
@@ -1724,6 +1784,7 @@ function openQuickActions() {
     <h2>Hizli Islemler</h2>
     <button id="quickCreateChannel" class="modal-btn primary">Kanal Ekle</button>
     <button id="quickCreateCategory" class="modal-btn secondary">Kategori Ekle</button>
+    <button id="quickAttach" class="modal-btn secondary">Dosya / Resim Ekle</button>
     <button id="quickReport" class="modal-btn secondary">Rapor Olustur</button>
   `);
 
@@ -1734,6 +1795,10 @@ function openQuickActions() {
   document.getElementById('quickCreateCategory').onclick = () => {
     hideModal();
     createCategory();
+  };
+  document.getElementById('quickAttach').onclick = () => {
+    hideModal();
+    attachmentInput.click();
   };
   document.getElementById('quickReport').onclick = () => {
     hideModal();
@@ -1842,6 +1907,25 @@ window.onload = () => {
     }
   };
   composerAddBtn.onclick = openQuickActions;
+  attachmentInput.onchange = () => {
+    const file = attachmentInput.files?.[0];
+    if (!file) {
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      pendingAttachment = {
+        name: file.name,
+        type: file.type,
+        size: file.size,
+        data: reader.result
+      };
+      updateComposerPlaceholder();
+      showToast(`${file.name} eklendi. Mesaji gonderince paylasilacak.`);
+      attachmentInput.value = '';
+    };
+    reader.readAsDataURL(file);
+  };
   navHomeBtn.onclick = () => handleNavInfo('home');
   navChatBtn.onclick = () => handleNavInfo('chat');
   navGameBtn.onclick = () => handleNavInfo('game');

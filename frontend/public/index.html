@@ -424,6 +424,42 @@
       white-space: pre-wrap;
     }
 
+    .attachment-card {
+      margin-top: 6px;
+      max-width: 320px;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      overflow: hidden;
+    }
+
+    .attachment-image {
+      display: block;
+      width: 100%;
+      max-height: 220px;
+      object-fit: cover;
+      background: #232428;
+    }
+
+    .attachment-file {
+      padding: 10px 12px;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    .attachment-link {
+      display: inline-block;
+      padding: 0 12px 10px;
+      color: #b8c0ff;
+      font-size: 11px;
+      text-decoration: none;
+    }
+
+    .attachment-link:hover {
+      text-decoration: underline;
+    }
+
     .message-actions-row {
       display: flex;
       justify-content: space-between;
@@ -1199,6 +1235,8 @@
   <div id="modalOverlay" class="modal-overlay hidden">
     <div id="modal" class="modal"></div>
   </div>
+
+  <input id="attachmentInput" type="file" accept="image/*,.pdf,.doc,.docx,.txt,.zip" class="hidden" />
 
   <script src="app.js"></script>
 </body>
