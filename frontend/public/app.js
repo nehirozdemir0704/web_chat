@@ -46,6 +46,7 @@ const speakingUsers = new Set();
 const speakingMeters = new Map();
 const peerConnections = new Map();
 const remoteStreams = new Map();
+const peerDisconnectTimers = new Map();
 let lastCallCapabilityMessage = '';
 let pendingAttachment = null;
 
@@ -631,6 +632,11 @@ function wsProtocol() {
 }
 
 function closePeerConnection(username) {
+  const disconnectTimer = peerDisconnectTimers.get(username);
+  if (disconnectTimer) {
+    clearTimeout(disconnectTimer);
+    peerDisconnectTimers.delete(username);
+  }
   const pc = peerConnections.get(username);
   if (pc) {
     pc.close();
@@ -638,6 +644,56 @@ function closePeerConnection(username) {
   }
   remoteStreams.delete(username);
   stopSpeakingMonitor(username);
+}
+
+function schedulePeerDisconnect(username) {
+  const existing = peerDisconnectTimers.get(username);
+  if (existing) {
+    clearTimeout(existing);
+  }
+  const timeout = setTimeout(() => {
+    closePeerConnection(username);
+    renderVideoPanel();
+  }, 6000);
+  peerDisconnectTimers.set(username, timeout);
+}
+
+function clearPeerDisconnect(username) {
+  const timeout = peerDisconnectTimers.get(username);
+  if (timeout) {
+    clearTimeout(timeout);
+    peerDisconnectTimers.delete(username);
+  }
+}
+
+function upsertRemoteStream(username, incomingStream) {
+  const existingStream = remoteStreams.get(username);
+  if (!existingStream) {
+    remoteStreams.set(username, incomingStream);
+    return incomingStream;
+  }
+
+  incomingStream.getTracks().forEach((track) => {
+    if (!existingStream.getTracks().some((item) => item.id === track.id)) {
+      existingStream.addTrack(track);
+    }
+  });
+  remoteStreams.set(username, existingStream);
+  return existingStream;
+}
+
+function attachStreamToVideo(element, stream, muted = false) {
+  if (!element || !stream) {
+    return;
+  }
+  if (element.srcObject !== stream) {
+    element.srcObject = stream;
+  }
+  element.muted = muted;
+  const playPromise = element.play?.();
+  if (playPromise?.catch) {
+    playPromise.catch(() => {});
+  }
 }
 
 function cleanupCallUi() {
@@ -702,14 +758,14 @@ function renderVideoPanel() {
   if (localStream) {
     const localVideo = document.getElementById('localVideo');
     if (localVideo) {
-      localVideo.srcObject = localStream;
+      attachStreamToVideo(localVideo, localStream, true);
     }
   }
 
   for (const [username, stream] of remoteStreams.entries()) {
     const el = document.getElementById(`remoteVideo_${username}`);
     if (el) {
-      el.srcObject = stream;
+      attachStreamToVideo(el, stream, false);
     }
   }
 }
@@ -740,13 +796,21 @@ function createPeerConnection(peerUsername) {
   };
 
   pc.ontrack = (event) => {
-    remoteStreams.set(peerUsername, event.streams[0]);
-    startSpeakingMonitor(event.streams[0], peerUsername);
+    const stream = upsertRemoteStream(peerUsername, event.streams[0]);
+    startSpeakingMonitor(stream, peerUsername);
     renderVideoPanel();
   };
 
   pc.onconnectionstatechange = () => {
-    if (['disconnected', 'failed', 'closed'].includes(pc.connectionState)) {
+    if (['connecting', 'connected', 'completed'].includes(pc.connectionState)) {
+      clearPeerDisconnect(peerUsername);
+      return;
+    }
+    if (pc.connectionState === 'disconnected') {
+      schedulePeerDisconnect(peerUsername);
+      return;
+    }
+    if (['failed', 'closed'].includes(pc.connectionState)) {
       closePeerConnection(peerUsername);
       renderVideoPanel();
     }
