@@ -714,6 +714,278 @@
       border-radius: 18px;
     }
 
+    .modal-overlay.auth-overlay {
+      position: relative;
+      background:
+        radial-gradient(circle at 18% 20%, rgba(255, 105, 180, 0.28), transparent 26%),
+        radial-gradient(circle at 82% 18%, rgba(255, 182, 193, 0.24), transparent 24%),
+        radial-gradient(circle at 50% 82%, rgba(255, 105, 180, 0.2), transparent 30%),
+        linear-gradient(145deg, rgba(30, 11, 29, 0.97), rgba(15, 15, 23, 0.98));
+      overflow: hidden;
+    }
+
+    .modal-overlay.auth-overlay .modal {
+      z-index: 2;
+    }
+
+    .modal-overlay.auth-overlay::before,
+    .modal-overlay.auth-overlay::after {
+      content: '';
+      position: absolute;
+      width: 340px;
+      height: 340px;
+      border-radius: 50%;
+      filter: blur(24px);
+      opacity: 0.42;
+      animation: authFloat 8s ease-in-out infinite;
+      pointer-events: none;
+    }
+
+    .modal-overlay.auth-overlay::before {
+      top: 8%;
+      left: 10%;
+      background: radial-gradient(circle, rgba(255, 105, 180, 0.55), transparent 68%);
+    }
+
+    .modal-overlay.auth-overlay::after {
+      right: 8%;
+      bottom: 6%;
+      background: radial-gradient(circle, rgba(255, 182, 193, 0.5), transparent 70%);
+      animation-delay: -3s;
+    }
+
+    .modal-overlay.auth-overlay .auth-orbit,
+    .modal-overlay.auth-overlay .auth-orbit-two,
+    .modal-overlay.auth-overlay .auth-grid {
+      position: absolute;
+      pointer-events: none;
+    }
+
+    .modal-overlay.auth-overlay .auth-orbit,
+    .modal-overlay.auth-overlay .auth-orbit-two {
+      border-radius: 50%;
+      border: 1px solid rgba(255, 182, 193, 0.14);
+      opacity: 0.6;
+    }
+
+    .modal-overlay.auth-overlay .auth-orbit {
+      width: 440px;
+      height: 440px;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      animation: authRotate 22s linear infinite;
+      box-shadow: 0 0 80px rgba(255, 105, 180, 0.08);
+    }
+
+    .modal-overlay.auth-overlay .auth-orbit-two {
+      width: 620px;
+      height: 620px;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      border-style: dashed;
+      animation: authRotateReverse 30s linear infinite;
+    }
+
+    .modal-overlay.auth-overlay .auth-grid {
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255, 192, 203, 0.05) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 192, 203, 0.05) 1px, transparent 1px);
+      background-size: 68px 68px;
+      mask-image: radial-gradient(circle at center, rgba(0, 0, 0, 0.75), transparent 78%);
+      opacity: 0.35;
+      animation: authGridDrift 18s linear infinite;
+    }
+
+    .modal.auth-modal {
+      position: relative;
+      width: min(480px, 100%);
+      padding: 32px;
+      border-radius: 28px;
+      border: 1px solid rgba(255, 192, 203, 0.18);
+      background:
+        linear-gradient(180deg, rgba(62, 39, 58, 0.98), rgba(31, 25, 36, 0.98)),
+        rgba(27, 24, 31, 0.92);
+      box-shadow:
+        0 24px 80px rgba(0, 0, 0, 0.42),
+        0 22px 44px rgba(255, 105, 180, 0.14),
+        0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+      backdrop-filter: blur(18px);
+      overflow: hidden;
+      animation: authCardIn 0.55s cubic-bezier(0.2, 0.9, 0.2, 1);
+    }
+
+    .modal.auth-modal::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        linear-gradient(135deg, rgba(255, 105, 180, 0.16), transparent 32%),
+        linear-gradient(320deg, rgba(255, 182, 193, 0.14), transparent 30%);
+      pointer-events: none;
+    }
+
+    .modal.auth-modal::after {
+      content: '';
+      position: absolute;
+      inset: auto -40px -64px auto;
+      width: 180px;
+      height: 180px;
+      background: radial-gradient(circle, rgba(255, 112, 184, 0.24), transparent 70%);
+      filter: blur(18px);
+      pointer-events: none;
+    }
+
+    .modal.auth-modal h2 {
+      font-size: 38px;
+      line-height: 0.96;
+      letter-spacing: -0.03em;
+      max-width: 10ch;
+    }
+
+    .modal.auth-modal .modal-copy {
+      color: #f2c9df;
+      font-size: 14px;
+      line-height: 1.5;
+      max-width: 32ch;
+    }
+
+    .modal.auth-modal .modal-input {
+      border-radius: 16px;
+      padding: 14px 16px;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 192, 203, 0.14);
+      transition: border-color 0.18s ease, box-shadow 0.18s ease, transform 0.18s ease;
+    }
+
+    .modal.auth-modal .modal-input:focus {
+      outline: none;
+      border-color: rgba(255, 105, 180, 0.48);
+      box-shadow: 0 0 0 4px rgba(255, 105, 180, 0.12);
+      transform: translateY(-1px);
+    }
+
+    .modal.auth-modal .modal-btn {
+      border-radius: 16px;
+      padding: 14px 18px;
+      font-size: 15px;
+      position: relative;
+      overflow: hidden;
+      transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+    }
+
+    .modal.auth-modal .modal-btn:hover {
+      transform: translateY(-1px);
+    }
+
+    .modal.auth-modal .modal-btn.primary {
+      background: linear-gradient(135deg, #ff63b8, #ff87c8);
+      color: #fff;
+      box-shadow: 0 12px 30px rgba(255, 99, 184, 0.28);
+    }
+
+    .modal.auth-modal .modal-btn.secondary {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 192, 203, 0.16);
+      color: #ffe2ef;
+    }
+
+    .auth-sparkle {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: #ffb9dc;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      margin-bottom: 4px;
+    }
+
+    .auth-sparkle::before,
+    .auth-sparkle::after {
+      content: '✦';
+      color: #ff78bf;
+      animation: authPulse 1.8s ease-in-out infinite;
+    }
+
+    .auth-caption {
+      display: grid;
+      gap: 2px;
+      margin: -2px 0 6px;
+      color: #ffcfe4;
+      font-size: 12px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      opacity: 0.82;
+    }
+
+    .auth-caption strong {
+      color: #fff0f7;
+      font-size: 13px;
+      letter-spacing: 0.08em;
+    }
+
+    @keyframes authCardIn {
+      from {
+        opacity: 0;
+        transform: translateY(18px) scale(0.98);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    @keyframes authFloat {
+      0%, 100% {
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+      50% {
+        transform: translate3d(12px, -16px, 0) scale(1.05);
+      }
+    }
+
+    @keyframes authPulse {
+      0%, 100% {
+        opacity: 0.55;
+        transform: scale(0.95);
+      }
+      50% {
+        opacity: 1;
+        transform: scale(1.08);
+      }
+    }
+
+    @keyframes authRotate {
+      from {
+        transform: translate(-50%, -50%) rotate(0deg);
+      }
+      to {
+        transform: translate(-50%, -50%) rotate(360deg);
+      }
+    }
+
+    @keyframes authRotateReverse {
+      from {
+        transform: translate(-50%, -50%) rotate(360deg);
+      }
+      to {
+        transform: translate(-50%, -50%) rotate(0deg);
+      }
+    }
+
+    @keyframes authGridDrift {
+      from {
+        transform: translate3d(0, 0, 0);
+      }
+      to {
+        transform: translate3d(0, 28px, 0);
+      }
+    }
+
     .checkbox-row {
       display: flex;
       gap: 10px;

@@ -274,12 +274,25 @@ function playNotificationSound() {
   }
 }
 
-function showModal(html) {
-  modal.innerHTML = html;
+function showModal(html, variant = 'default') {
+  if (variant === 'auth') {
+    modal.innerHTML = `
+      <div class="auth-grid"></div>
+      <div class="auth-orbit"></div>
+      <div class="auth-orbit-two"></div>
+      ${html}
+    `;
+  } else {
+    modal.innerHTML = html;
+  }
+  modal.classList.toggle('auth-modal', variant === 'auth');
+  modalOverlay.classList.toggle('auth-overlay', variant === 'auth');
   modalOverlay.classList.remove('hidden');
 }
 
 function hideModal() {
+  modal.classList.remove('auth-modal');
+  modalOverlay.classList.remove('auth-overlay');
   modalOverlay.classList.add('hidden');
 }
 
@@ -1528,13 +1541,18 @@ async function bootstrap() {
 
 function showLogin() {
   showModal(`
+    <div class="auth-sparkle">Hos Geldiniz</div>
+    <div class="auth-caption">
+      <strong>Pembe gece modu</strong>
+      Topluluguna tek dokunusta baglan.
+    </div>
     <h2>Topluluk Sunucusu Giris</h2>
     <p class="modal-copy">Kullanici adi ve sifrenizi girin.</p>
     <input id="loginUser" class="modal-input" placeholder="Kullanici adi" />
     <input id="loginPass" class="modal-input" type="password" placeholder="Sifre" />
     <button id="loginSubmit" class="modal-btn primary">Giris Yap</button>
     <button id="showRegister" class="modal-btn secondary">Kayit Ol</button>
-  `);
+  `, 'auth');
 
   document.getElementById('loginSubmit').onclick = async () => {
     try {
@@ -1554,6 +1572,11 @@ function showLogin() {
 
 function showRegister() {
   showModal(`
+    <div class="auth-sparkle">Yeni Baslangic</div>
+    <div class="auth-caption">
+      <strong>Kendi alanini kur</strong>
+      Profilini olustur ve sunucuna katil.
+    </div>
     <h2>Yeni Uye</h2>
     <p class="modal-copy">Kayit olan herkes varsayilan sunucuya uye olarak eklenir.</p>
     <input id="regUser" class="modal-input" placeholder="Kullanici adi" />
@@ -1561,7 +1584,7 @@ function showRegister() {
     <input id="regAvatar" class="modal-input" type="file" accept="image/*" />
     <button id="registerSubmit" class="modal-btn primary">Kayit Ol</button>
     <button id="showLogin" class="modal-btn secondary">Geri Don</button>
-  `);
+  `, 'auth');
 
   document.getElementById('registerSubmit').onclick = async () => {
     try {
