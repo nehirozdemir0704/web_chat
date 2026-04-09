@@ -1363,15 +1363,21 @@ function connectWS() {
         appState.messages[channelId] = [];
       }
       appState.messages[channelId].push(message);
+      const isMention = message.user !== currentUser && messageMentionsUser(message.text, currentUser);
       if (message.user !== currentUser) {
         playNotificationSound();
-        showBrowserNotification(`${message.user} yeni mesaj`, message.text || 'Yeni kanal mesaji');
+        showBrowserNotification(
+          isMention ? `${message.user} senden bahsetti` : `${message.user} yeni mesaj`,
+          message.text || 'Yeni kanal mesaji'
+        );
       }
       if (channelId === currentChannelId) {
         renderMessages();
         if (message.user !== currentUser) {
-          showToast(`${message.user} yeni mesaj gonderdi.`);
+          showToast(isMention ? `${message.user} senden bahsetti.` : `${message.user} yeni mesaj gonderdi.`);
         }
+      } else if (isMention) {
+        showToast(`${message.user} bir mesajda senden bahsetti.`);
       }
       return;
     }
@@ -2067,6 +2073,12 @@ function normalizeSearchText(value) {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/ı/g, 'i');
+}
+
+function messageMentionsUser(messageText, username) {
+  const normalizedText = normalizeSearchText(messageText).replace(/[^a-z0-9_@]+/g, ' ');
+  const normalizedUsername = normalizeSearchText(username).replace(/[^a-z0-9_]+/g, '');
+  return normalizedUsername ? normalizedText.includes(`@${normalizedUsername}`) : false;
 }
 
 function showSearchModal() {
