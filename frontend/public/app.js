@@ -25,7 +25,7 @@ let appState = {
   voicePresence: {},
   presence: {},
   users: [],
-  social: { friends: [], blocked: [] },
+  social: { friends: [], blocked: [], incomingRequests: [], outgoingRequests: [] },
   callPresence: {},
   typingState: {}
 };
@@ -70,6 +70,7 @@ const inviteServerBtn = document.getElementById('inviteServerBtn');
 const joinServerBtn = document.getElementById('joinServerBtn');
 const assignRoleBtn = document.getElementById('assignRoleBtn');
 const moderateBtn = document.getElementById('moderateBtn');
+const friendRequestsBtn = document.getElementById('friendRequestsBtn');
 const reportBtn = document.getElementById('reportBtn');
 const deleteServerBtn = document.getElementById('deleteServerBtn');
 const joinVoiceBtn = document.getElementById('joinVoiceBtn');
@@ -149,7 +150,7 @@ function getCurrentVoiceMembers() {
 }
 
 function mySocial() {
-  return appState.social || { friends: [], blocked: [] };
+  return appState.social || { friends: [], blocked: [], incomingRequests: [], outgoingRequests: [] };
 }
 
 function isFriend(username) {
@@ -158,6 +159,14 @@ function isFriend(username) {
 
 function isBlockedUser(username) {
   return mySocial().blocked.includes(username);
+}
+
+function hasIncomingRequest(username) {
+  return mySocial().incomingRequests.includes(username);
+}
+
+function hasOutgoingRequest(username) {
+  return mySocial().outgoingRequests.includes(username);
 }
 
 function getCurrentCallMembers() {
@@ -178,6 +187,15 @@ function dmScopeKey(username) {
 
 function showToast(message) {
   helperText.textContent = message;
+}
+
+function syncSocialState(nextSocial) {
+  appState.social = nextSocial || { friends: [], blocked: [], incomingRequests: [], outgoingRequests: [] };
+  if (friendRequestsBtn) {
+    friendRequestsBtn.textContent = mySocial().incomingRequests.length
+      ? `Istekler (${mySocial().incomingRequests.length})`
+      : 'Istekler';
+  }
 }
 
 function isSecureMediaContext() {
@@ -865,6 +883,8 @@ function showUserProfile(username) {
   const isMuted = Boolean(user?.mutedUntil && user.mutedUntil > Date.now());
   const friend = isFriend(username);
   const blocked = isBlockedUser(username);
+  const incomingRequest = hasIncomingRequest(username);
+  const outgoingRequest = hasOutgoingRequest(username);
   const blockedByTarget = Array.isArray(user?.blocked) && user.blocked.includes(currentUser);
   const dmBlocked = blocked || blockedByTarget;
 
@@ -877,7 +897,7 @@ function showUserProfile(username) {
       <div class="report-meta">Rol: ${escapeHtml((member?.role || 'member').toUpperCase())}</div>
       <div class="report-meta">DM sayisi: ${dmCount}</div>
       <div class="report-meta">Sesli oda: ${escapeHtml(voiceChannel?.name || 'yok')}</div>
-      ${username !== currentUser ? `<div class="report-meta">Iliski: ${blocked ? 'engelli' : (blockedByTarget ? 'seni engellemis' : (friend ? 'arkadas' : 'normal'))}</div>` : ''}
+      ${username !== currentUser ? `<div class="report-meta">Iliski: ${blocked ? 'engelli' : (blockedByTarget ? 'seni engellemis' : (friend ? 'arkadas' : (incomingRequest ? 'gelen istek' : (outgoingRequest ? 'istek gonderildi' : 'normal'))))}</div>` : ''}
     </div>
     ${username === currentUser ? `
       <input id="avatarFileInput" type="file" accept="image/*" class="modal-input" />
@@ -885,7 +905,11 @@ function showUserProfile(username) {
     ` : ''}
     ${username !== currentUser ? `
       <div class="action-grid">
-        <button id="profileFriendBtn" class="modal-btn secondary">${friend ? 'Arkadas Sil' : 'Arkadas Ekle'}</button>
+        ${friend
+          ? '<button id="profileFriendBtn" class="modal-btn secondary">Arkadas Sil</button>'
+          : incomingRequest
+            ? '<button id="profileAcceptFriendBtn" class="modal-btn primary">Kabul Et</button><button id="profileRejectFriendBtn" class="modal-btn secondary">Reddet</button>'
+            : `<button id="profileFriendBtn" class="modal-btn secondary">${outgoingRequest ? 'Istek Iptal' : 'Arkadaslik Istegi Gonder'}</button>`}
         <button id="profileBlockBtn" class="modal-btn ${blocked ? 'secondary' : 'primary'}">${blocked ? 'Engeli Kaldir' : 'Engelle'}</button>
       </div>
     ` : ''}
@@ -911,24 +935,71 @@ function showUserProfile(username) {
   }
 
   if (username !== currentUser) {
-    document.getElementById('profileFriendBtn').onclick = async () => {
-      try {
-        const data = await request(API.social, {
-          method: 'POST',
-          body: JSON.stringify({
-            actor: currentUser,
-            targetUser: username,
-            action: friend ? 'remove-friend' : 'add-friend'
-          })
-        });
-        appState.social = data.social;
-        hideModal();
-        renderAll();
-        showToast(friend ? 'Arkadas silindi.' : 'Arkadas eklendi.');
-      } catch (error) {
-        alert(error.message);
-      }
-    };
+    const profileFriendBtn = document.getElementById('profileFriendBtn');
+    if (profileFriendBtn) {
+      profileFriendBtn.onclick = async () => {
+        try {
+          const data = await request(API.social, {
+            method: 'POST',
+            body: JSON.stringify({
+              actor: currentUser,
+              targetUser: username,
+              action: friend ? 'remove-friend' : (outgoingRequest ? 'cancel-request' : 'send-request')
+            })
+          });
+          syncSocialState(data.social);
+          hideModal();
+          renderAll();
+          showToast(friend ? 'Arkadas silindi.' : (outgoingRequest ? 'Arkadaslik istegi iptal edildi.' : 'Arkadaslik istegi gonderildi.'));
+        } catch (error) {
+          alert(error.message);
+        }
+      };
+    }
+
+    const profileAcceptFriendBtn = document.getElementById('profileAcceptFriendBtn');
+    if (profileAcceptFriendBtn) {
+      profileAcceptFriendBtn.onclick = async () => {
+        try {
+          const data = await request(API.social, {
+            method: 'POST',
+            body: JSON.stringify({
+              actor: currentUser,
+              targetUser: username,
+              action: 'accept-request'
+            })
+          });
+          syncSocialState(data.social);
+          hideModal();
+          renderAll();
+          showToast('Arkadaslik istegi kabul edildi.');
+        } catch (error) {
+          alert(error.message);
+        }
+      };
+    }
+
+    const profileRejectFriendBtn = document.getElementById('profileRejectFriendBtn');
+    if (profileRejectFriendBtn) {
+      profileRejectFriendBtn.onclick = async () => {
+        try {
+          const data = await request(API.social, {
+            method: 'POST',
+            body: JSON.stringify({
+              actor: currentUser,
+              targetUser: username,
+              action: 'reject-request'
+            })
+          });
+          syncSocialState(data.social);
+          hideModal();
+          renderAll();
+          showToast('Arkadaslik istegi reddedildi.');
+        } catch (error) {
+          alert(error.message);
+        }
+      };
+    }
 
     document.getElementById('profileBlockBtn').onclick = async () => {
       const action = blocked ? 'unblock' : 'block';
@@ -946,7 +1017,7 @@ function showUserProfile(username) {
             action
           })
         });
-        appState.social = data.social;
+        syncSocialState(data.social);
         hideModal();
         renderAll();
         showToast(blocked ? 'Kullanici engelden cikarildi.' : 'Kullanici engellendi.');
@@ -1157,6 +1228,7 @@ function renderPermissions() {
 }
 
 function renderAll() {
+  syncSocialState(appState.social);
   renderServers();
   renderChannels();
   renderHeader();
@@ -1328,11 +1400,18 @@ function connectWS() {
     }
 
     if (data.type === 'stateUpdated') {
+      const previousIncoming = mySocial().incomingRequests.length;
       appState.users = data.users;
+      syncSocialState(data.social);
       appState.presence = data.presence;
       appState.voicePresence = data.voicePresence;
       appState.callPresence = data.callPresence || {};
       appState.typingState = data.typingState || {};
+      if (mySocial().incomingRequests.length > previousIncoming) {
+        playNotificationSound();
+        showToast('Yeni bir arkadaslik istegi geldi.');
+        showBrowserNotification('Yeni arkadaslik istegi', 'Istekler panelinden kabul edebilirsin.');
+      }
       currentVoiceChannelId = appState.presence[currentUser]?.voiceChannelId || null;
       renderMembers();
       renderDmList();
@@ -1417,6 +1496,7 @@ function connectWS() {
 async function bootstrap() {
   const data = await request(`${API.bootstrap}?username=${encodeURIComponent(currentUser)}`);
   appState = data;
+  syncSocialState(appState.social);
   unreadDmCounts = {};
   currentServerId = appState.servers[0]?.id || null;
   currentChannelId = appState.servers[0]?.categories[0]?.channels[0]?.id || null;
@@ -2016,6 +2096,8 @@ function showSearchModal() {
     userResults.innerHTML = matches.map((user) => {
       const friend = isFriend(user.username);
       const blocked = isBlockedUser(user.username);
+      const incomingRequest = hasIncomingRequest(user.username);
+      const outgoingRequest = hasOutgoingRequest(user.username);
       const blockedByTarget = Array.isArray(user.blocked) && user.blocked.includes(currentUser);
       const disabled = blocked || blockedByTarget;
       const label = blocked
@@ -2024,7 +2106,11 @@ function showSearchModal() {
           ? 'Engelledi'
           : friend
             ? 'Arkadas'
-            : 'Ekle';
+            : incomingRequest
+              ? 'Kabul Et'
+              : outgoingRequest
+                ? 'Istek Gonderildi'
+                : 'Istek Gonder';
 
       return `
         <div class="member-row" style="margin-top:8px;">
@@ -2037,7 +2123,7 @@ function showSearchModal() {
           </div>
           <div class="member-actions">
             <button class="mini-action-btn search-profile-btn" data-username="${user.username}">Profil</button>
-            <button class="mini-action-btn search-add-btn" data-username="${user.username}" ${disabled || friend ? 'disabled' : ''}>${label}</button>
+            <button class="mini-action-btn search-add-btn" data-username="${user.username}" ${disabled || outgoingRequest || friend ? 'disabled' : ''}>${label}</button>
           </div>
         </div>
       `;
@@ -2051,16 +2137,17 @@ function showSearchModal() {
       button.onclick = async () => {
         try {
           const targetUser = button.dataset.username;
+          const incomingForTarget = hasIncomingRequest(targetUser);
           const data = await request(API.social, {
             method: 'POST',
             body: JSON.stringify({
               actor: currentUser,
               targetUser,
-              action: 'add-friend'
+              action: incomingForTarget ? 'accept-request' : 'send-request'
             })
           });
-          appState.social = data.social;
-          showToast(`${targetUser} arkadas olarak eklendi.`);
+          syncSocialState(data.social);
+          showToast(incomingForTarget ? `${targetUser} ile arkadas oldun.` : `${targetUser} kullanicisina istek gonderildi.`);
           renderUsers(q);
         } catch (error) {
           alert(error.message);
@@ -2081,6 +2168,77 @@ function showSearchModal() {
   };
 
   renderUsers('');
+}
+
+function showFriendRequestsModal() {
+  const incoming = mySocial().incomingRequests;
+  showModal(`
+    <h2>Arkadaslik Istekleri</h2>
+    <div id="friendRequestsModalList">${incoming.length ? '' : '<div class="panel-subtitle">Bekleyen istek yok.</div>'}</div>
+  `);
+
+  const container = document.getElementById('friendRequestsModalList');
+  if (!incoming.length) {
+    return;
+  }
+
+  container.innerHTML = incoming.map((username) => `
+    <div class="member-row" style="margin-top:8px;">
+      <div style="display:flex; gap:10px; align-items:center;">
+        ${avatarMarkup(username, 'member-avatar')}
+        <div>
+          <div class="member-name">${escapeHtml(username)}</div>
+          <div class="member-role">bekleyen istek</div>
+        </div>
+      </div>
+      <div class="member-actions">
+        <button class="mini-action-btn request-accept-btn" data-username="${username}">Kabul</button>
+        <button class="mini-action-btn request-reject-btn" data-username="${username}">Reddet</button>
+      </div>
+    </div>
+  `).join('');
+
+  container.querySelectorAll('.request-accept-btn').forEach((button) => {
+    button.onclick = async () => {
+      try {
+        const data = await request(API.social, {
+          method: 'POST',
+          body: JSON.stringify({
+            actor: currentUser,
+            targetUser: button.dataset.username,
+            action: 'accept-request'
+          })
+        });
+        syncSocialState(data.social);
+        showFriendRequestsModal();
+        renderAll();
+        showToast('Arkadaslik istegi kabul edildi.');
+      } catch (error) {
+        alert(error.message);
+      }
+    };
+  });
+
+  container.querySelectorAll('.request-reject-btn').forEach((button) => {
+    button.onclick = async () => {
+      try {
+        const data = await request(API.social, {
+          method: 'POST',
+          body: JSON.stringify({
+            actor: currentUser,
+            targetUser: button.dataset.username,
+            action: 'reject-request'
+          })
+        });
+        syncSocialState(data.social);
+        showFriendRequestsModal();
+        renderAll();
+        showToast('Arkadaslik istegi reddedildi.');
+      } catch (error) {
+        alert(error.message);
+      }
+    };
+  });
 }
 
 function showPinnedInfo() {
@@ -2194,6 +2352,7 @@ window.onload = () => {
   moderateBtn.onclick = moderateUser;
   reportBtn.onclick = reportUser;
   deleteServerBtn.onclick = deleteServer;
+  friendRequestsBtn.onclick = showFriendRequestsModal;
   joinVoiceBtn.onclick = joinVoice;
   leaveVoiceBtn.onclick = leaveVoice;
   logoutBtn.onclick = () => location.reload();

@@ -43,9 +43,9 @@ function defaultState() {
 
   return {
     users: [
-      { username: 'admin', password: '123', banned: false, mutedUntil: null, status: 'online', friends: [], blocked: [] },
-      { username: 'moderator', password: '123', banned: false, mutedUntil: null, status: 'away', friends: [], blocked: [] },
-      { username: 'student', password: '123', banned: false, mutedUntil: null, status: 'online', friends: [], blocked: [] }
+      { username: 'admin', password: '123', banned: false, mutedUntil: null, status: 'online', friends: [], blocked: [], incomingRequests: [], outgoingRequests: [] },
+      { username: 'moderator', password: '123', banned: false, mutedUntil: null, status: 'away', friends: [], blocked: [], incomingRequests: [], outgoingRequests: [] },
+      { username: 'student', password: '123', banned: false, mutedUntil: null, status: 'online', friends: [], blocked: [], incomingRequests: [], outgoingRequests: [] }
     ],
     directMessages: {},
     servers: [
@@ -138,6 +138,8 @@ function normalizeState(loadedState) {
   nextState.users.forEach((user) => {
     user.friends = Array.isArray(user.friends) ? [...new Set(user.friends)] : [];
     user.blocked = Array.isArray(user.blocked) ? [...new Set(user.blocked)] : [];
+    user.incomingRequests = Array.isArray(user.incomingRequests) ? [...new Set(user.incomingRequests)] : [];
+    user.outgoingRequests = Array.isArray(user.outgoingRequests) ? [...new Set(user.outgoingRequests)] : [];
     if (!nextState.presence[user.username]) {
       nextState.presence[user.username] = {
         status: user.status || 'offline',
@@ -201,6 +203,8 @@ function sanitizeUser(user) {
     avatar: user.avatar || null,
     friends: Array.isArray(user.friends) ? user.friends : [],
     blocked: Array.isArray(user.blocked) ? user.blocked : [],
+    incomingRequests: Array.isArray(user.incomingRequests) ? user.incomingRequests : [],
+    outgoingRequests: Array.isArray(user.outgoingRequests) ? user.outgoingRequests : [],
     status: onlineUsers.has(user.username)
       ? (state.presence[user.username]?.status || user.status || 'online')
       : 'offline'
@@ -283,7 +287,9 @@ function buildSocialState(username) {
   const user = getUser(username);
   return {
     friends: Array.isArray(user?.friends) ? user.friends : [],
-    blocked: Array.isArray(user?.blocked) ? user.blocked : []
+    blocked: Array.isArray(user?.blocked) ? user.blocked : [],
+    incomingRequests: Array.isArray(user?.incomingRequests) ? user.incomingRequests : [],
+    outgoingRequests: Array.isArray(user?.outgoingRequests) ? user.outgoingRequests : []
   };
 }
 
@@ -421,23 +427,36 @@ function getStatsForServer(server, username) {
   };
 }
 
+function broadcastState() {
+  const effectivePresence = buildEffectivePresence();
+  wss.clients.forEach((client) => {
+    if (client.readyState !== WebSocket.OPEN) {
+      return;
+    }
+
+    const info = wsClients.get(client);
+    if (!info?.username) {
+      return;
+    }
+
+    client.send(JSON.stringify({
+      type: 'stateUpdated',
+      users: state.users.map(sanitizeUser),
+      social: buildSocialState(info.username),
+      presence: effectivePresence,
+      voicePresence: state.voicePresence,
+      callPresence,
+      typingState
+    }));
+  });
+}
+
 function broadcast(type, payload) {
   const message = JSON.stringify({ type, ...payload });
   wss.clients.forEach((client) => {
     if (client.readyState === WebSocket.OPEN) {
       client.send(message);
     }
-  });
-}
-
-function broadcastState() {
-  const effectivePresence = buildEffectivePresence();
-  broadcast('stateUpdated', {
-    users: state.users.map(sanitizeUser),
-    presence: effectivePresence,
-    voicePresence: state.voicePresence,
-    callPresence,
-    typingState
   });
 }
 
@@ -648,7 +667,9 @@ app.post('/api/register', (req, res) => {
     status: 'online',
     avatar: avatar || null,
     friends: [],
-    blocked: []
+    blocked: [],
+    incomingRequests: [],
+    outgoingRequests: []
   };
 
   state.users.push(user);
@@ -837,12 +858,40 @@ app.post('/api/social', (req, res) => {
   target.friends = Array.isArray(target.friends) ? target.friends : [];
   target.blocked = Array.isArray(target.blocked) ? target.blocked : [];
 
-  if (action === 'add-friend') {
+  actorUser.incomingRequests = Array.isArray(actorUser.incomingRequests) ? actorUser.incomingRequests : [];
+  actorUser.outgoingRequests = Array.isArray(actorUser.outgoingRequests) ? actorUser.outgoingRequests : [];
+  target.incomingRequests = Array.isArray(target.incomingRequests) ? target.incomingRequests : [];
+  target.outgoingRequests = Array.isArray(target.outgoingRequests) ? target.outgoingRequests : [];
+
+  if (action === 'send-request') {
     if (areUsersBlocked(actor, targetUser)) {
-      return res.status(400).json({ error: 'Engelli kullanicilar arkadas olarak eklenemez.' });
+      return res.status(400).json({ error: 'Engelli kullanicilara istek gonderilemez.' });
     }
+    if (actorUser.friends.includes(targetUser)) {
+      return res.status(400).json({ error: 'Bu kullanici zaten arkadas listende.' });
+    }
+    if (actorUser.outgoingRequests.includes(targetUser)) {
+      return res.status(400).json({ error: 'Bu kullaniciya zaten istek gonderildi.' });
+    }
+    if (actorUser.incomingRequests.includes(targetUser)) {
+      return res.status(400).json({ error: 'Bu kullanicidan gelen bir istek var. Kabul edebilirsin.' });
+    }
+    actorUser.outgoingRequests = [...new Set([...actorUser.outgoingRequests, targetUser])];
+    target.incomingRequests = [...new Set([...target.incomingRequests, actor])];
+  } else if (action === 'cancel-request') {
+    actorUser.outgoingRequests = actorUser.outgoingRequests.filter((username) => username !== targetUser);
+    target.incomingRequests = target.incomingRequests.filter((username) => username !== actor);
+  } else if (action === 'accept-request') {
+    if (!actorUser.incomingRequests.includes(targetUser)) {
+      return res.status(400).json({ error: 'Bekleyen istek bulunamadi.' });
+    }
+    actorUser.incomingRequests = actorUser.incomingRequests.filter((username) => username !== targetUser);
+    target.outgoingRequests = target.outgoingRequests.filter((username) => username !== actor);
     actorUser.friends = [...new Set([...actorUser.friends, targetUser])];
     target.friends = [...new Set([...target.friends, actor])];
+  } else if (action === 'reject-request') {
+    actorUser.incomingRequests = actorUser.incomingRequests.filter((username) => username !== targetUser);
+    target.outgoingRequests = target.outgoingRequests.filter((username) => username !== actor);
   } else if (action === 'remove-friend') {
     actorUser.friends = actorUser.friends.filter((username) => username !== targetUser);
     target.friends = target.friends.filter((username) => username !== actor);
@@ -850,6 +899,10 @@ app.post('/api/social', (req, res) => {
     actorUser.blocked = [...new Set([...actorUser.blocked, targetUser])];
     actorUser.friends = actorUser.friends.filter((username) => username !== targetUser);
     target.friends = target.friends.filter((username) => username !== actor);
+    actorUser.incomingRequests = actorUser.incomingRequests.filter((username) => username !== targetUser);
+    actorUser.outgoingRequests = actorUser.outgoingRequests.filter((username) => username !== targetUser);
+    target.incomingRequests = target.incomingRequests.filter((username) => username !== actor);
+    target.outgoingRequests = target.outgoingRequests.filter((username) => username !== actor);
   } else if (action === 'unblock') {
     actorUser.blocked = actorUser.blocked.filter((username) => username !== targetUser);
   } else {
