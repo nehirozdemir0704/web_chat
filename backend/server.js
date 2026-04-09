@@ -695,6 +695,36 @@ app.post('/api/server', (req, res) => {
   res.json({ server: serializeServer(serverItem, creator) });
 });
 
+app.post('/api/server/delete', (req, res) => {
+  const { serverId, actor } = req.body;
+  const serverItem = getServer(serverId);
+  if (!serverItem) {
+    return res.status(404).json({ error: 'Server not found.' });
+  }
+
+  const channelIds = serverItem.categories.flatMap((category) => category.channels.map((channel) => channel.id));
+  state.servers = state.servers.filter((item) => item.id !== serverId);
+  channelIds.forEach((channelId) => {
+    delete state.messages[channelId];
+    delete state.voicePresence[channelId];
+    delete callPresence[channelId];
+  });
+
+  Object.keys(state.presence).forEach((username) => {
+    const presence = state.presence[username];
+    if (presence?.currentServerId === serverId) {
+      presence.currentServerId = state.servers[0]?.id || null;
+      presence.currentChannelId = state.servers[0]?.categories?.[0]?.channels?.[0]?.id || null;
+      presence.voiceChannelId = null;
+    }
+  });
+
+  saveState();
+  broadcastState();
+  state.servers.forEach((item) => broadcastServer(item.id));
+  res.json({ success: true });
+});
+
 app.post('/api/channel', (req, res) => {
   const { serverId, categoryId, name, kind, allowedRoles, actor } = req.body;
   const serverItem = getServer(serverId);

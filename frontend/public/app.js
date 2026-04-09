@@ -3,6 +3,7 @@ const API = {
   register: '/api/register',
   login: '/api/login',
   createServer: '/api/server',
+  deleteServer: '/api/server/delete',
   createCategory: '/api/category',
   createChannel: '/api/channel',
   changeRole: '/api/role',
@@ -64,6 +65,7 @@ const createChannelBtn = document.getElementById('createChannelBtn');
 const assignRoleBtn = document.getElementById('assignRoleBtn');
 const moderateBtn = document.getElementById('moderateBtn');
 const reportBtn = document.getElementById('reportBtn');
+const deleteServerBtn = document.getElementById('deleteServerBtn');
 const joinVoiceBtn = document.getElementById('joinVoiceBtn');
 const leaveVoiceBtn = document.getElementById('leaveVoiceBtn');
 const logoutBtn = document.getElementById('logoutBtn');
@@ -1506,6 +1508,36 @@ async function createServer() {
   };
 }
 
+async function deleteServer() {
+  const server = getCurrentServer();
+  if (!server) {
+    return;
+  }
+
+  const confirmed = confirm(`"${server.name}" sunucusunu silmek istiyor musun? Bu islem geri alinmaz.`);
+  if (!confirmed) {
+    return;
+  }
+
+  try {
+    await request(API.deleteServer, {
+      method: 'POST',
+      body: JSON.stringify({
+        serverId: currentServerId,
+        actor: currentUser
+      })
+    });
+
+    appState.servers = appState.servers.filter((item) => item.id !== currentServerId);
+    currentServerId = appState.servers[0]?.id || null;
+    currentChannelId = appState.servers[0]?.categories?.[0]?.channels?.[0]?.id || null;
+    renderAll();
+    showToast('Sunucu silindi.');
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
 function createChannel() {
   const server = getCurrentServer();
   if (!server) {
@@ -1929,6 +1961,7 @@ window.onload = () => {
   assignRoleBtn.onclick = assignRole;
   moderateBtn.onclick = moderateUser;
   reportBtn.onclick = reportUser;
+  deleteServerBtn.onclick = deleteServer;
   joinVoiceBtn.onclick = joinVoice;
   leaveVoiceBtn.onclick = leaveVoice;
   logoutBtn.onclick = () => location.reload();
