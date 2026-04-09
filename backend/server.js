@@ -19,6 +19,10 @@ function uid(prefix) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+function inviteCode() {
+  return Math.random().toString(36).slice(2, 8).toUpperCase();
+}
+
 function now() {
   return Date.now();
 }
@@ -75,7 +79,8 @@ function defaultState() {
         reports: [],
         polls: [],
         pinnedMessageIds: [],
-        moderationLogs: []
+        moderationLogs: [],
+        inviteCode: null
       }
     ],
     messages: {
@@ -145,6 +150,7 @@ function normalizeState(loadedState) {
     server.polls = Array.isArray(server.polls) ? server.polls : [];
     server.pinnedMessageIds = Array.isArray(server.pinnedMessageIds) ? server.pinnedMessageIds : [];
     server.moderationLogs = Array.isArray(server.moderationLogs) ? server.moderationLogs : [];
+    server.inviteCode = typeof server.inviteCode === 'string' ? server.inviteCode : inviteCode();
     if (Array.isArray(server.members) && server.members.length && !server.members.some((member) => member.role === 'admin')) {
       server.members[0].role = 'admin';
     }
@@ -309,7 +315,8 @@ function serializeServer(server, username) {
     reports: server.reports,
     polls: server.polls,
     pinnedMessageIds: server.pinnedMessageIds,
-    moderationLogs: server.moderationLogs
+    moderationLogs: server.moderationLogs,
+    inviteCode: member && ['admin', 'mod'].includes(member.role) ? server.inviteCode : null
   };
 }
 
@@ -346,13 +353,15 @@ function buildBootstrap(username) {
   };
 }
 
-function ensureMemberships(username) {
-  state.servers.forEach((serverItem) => {
-    const alreadyMember = getServerMember(serverItem, username);
-    if (!alreadyMember) {
-      serverItem.members.push({ username, role: 'member' });
-    }
-  });
+function ensureDefaultMembership(username) {
+  const defaultServer = state.servers[0];
+  if (!defaultServer) {
+    return;
+  }
+  const alreadyMember = getServerMember(defaultServer, username);
+  if (!alreadyMember) {
+    defaultServer.members.push({ username, role: 'member' });
+  }
 }
 
 function getStatsForServer(server, username) {
@@ -616,7 +625,7 @@ app.post('/api/register', (req, res) => {
     currentChannelId: state.servers[0]?.categories[0]?.channels[0]?.id || null,
     voiceChannelId: null
   };
-  ensureMemberships(username);
+  ensureDefaultMembership(username);
   saveState();
   broadcastState();
   state.servers.forEach((serverItem) => broadcastServer(serverItem.id));
@@ -678,7 +687,8 @@ app.post('/api/server', (req, res) => {
     reports: [],
     polls: [],
     pinnedMessageIds: [],
-    moderationLogs: []
+    moderationLogs: [],
+    inviteCode: inviteCode()
   };
 
   state.servers.push(serverItem);
@@ -693,6 +703,52 @@ app.post('/api/server', (req, res) => {
   saveState();
   broadcastServer(serverItem.id);
   res.json({ server: serializeServer(serverItem, creator) });
+});
+
+app.post('/api/server/invite', (req, res) => {
+  const { serverId, actor, regenerate } = req.body;
+  const serverItem = getServer(serverId);
+  if (!serverItem) {
+    return res.status(404).json({ error: 'Server not found.' });
+  }
+
+  const actorMember = getServerMember(serverItem, actor);
+  if (!actorMember || !['admin', 'mod'].includes(actorMember.role)) {
+    return res.status(403).json({ error: 'Davet kodunu sadece admin/mod gorebilir.' });
+  }
+
+  if (!serverItem.inviteCode || regenerate) {
+    serverItem.inviteCode = inviteCode();
+    saveState();
+    broadcastServer(serverId);
+  }
+
+  res.json({ inviteCode: serverItem.inviteCode });
+});
+
+app.post('/api/server/join', (req, res) => {
+  const { username, inviteCode: submittedCode } = req.body;
+  const user = getUser(username);
+  if (!user) {
+    return res.status(404).json({ error: 'User not found.' });
+  }
+
+  const normalizedCode = submittedCode?.trim().toUpperCase();
+  const serverItem = state.servers.find((item) => item.inviteCode === normalizedCode);
+  if (!serverItem) {
+    return res.status(404).json({ error: 'Gecersiz davet kodu.' });
+  }
+
+  if (!getServerMember(serverItem, username)) {
+    serverItem.members.push({ username, role: 'member' });
+  }
+
+  state.presence[username] = state.presence[username] || {};
+  state.presence[username].currentServerId = serverItem.id;
+  state.presence[username].currentChannelId = serverItem.categories?.[0]?.channels?.[0]?.id || null;
+  saveState();
+  broadcastServer(serverItem.id);
+  res.json({ server: serializeServer(serverItem, username) });
 });
 
 app.post('/api/server/delete', (req, res) => {

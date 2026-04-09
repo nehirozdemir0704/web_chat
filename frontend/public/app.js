@@ -4,6 +4,8 @@ const API = {
   login: '/api/login',
   createServer: '/api/server',
   deleteServer: '/api/server/delete',
+  serverInvite: '/api/server/invite',
+  joinServer: '/api/server/join',
   createCategory: '/api/category',
   createChannel: '/api/channel',
   changeRole: '/api/role',
@@ -62,6 +64,8 @@ const modal = document.getElementById('modal');
 const createServerBtn = document.getElementById('createServerBtn');
 const createCategoryBtn = document.getElementById('createCategoryBtn');
 const createChannelBtn = document.getElementById('createChannelBtn');
+const inviteServerBtn = document.getElementById('inviteServerBtn');
+const joinServerBtn = document.getElementById('joinServerBtn');
 const assignRoleBtn = document.getElementById('assignRoleBtn');
 const moderateBtn = document.getElementById('moderateBtn');
 const reportBtn = document.getElementById('reportBtn');
@@ -1538,6 +1542,72 @@ async function deleteServer() {
   }
 }
 
+async function showInviteCode() {
+  try {
+    const data = await request(API.serverInvite, {
+      method: 'POST',
+      body: JSON.stringify({
+        serverId: currentServerId,
+        actor: currentUser
+      })
+    });
+
+    showModal(`
+      <h2>Davet Kodu</h2>
+      <div class="report-card">
+        <div><strong>${escapeHtml(getCurrentServer()?.name || 'Sunucu')}</strong></div>
+        <div class="report-meta">Bu kodu paylasan kullanicilar sunucuya katilabilir.</div>
+        <div style="margin-top:8px; font-size:22px; font-weight:800; letter-spacing:0.12em;">${escapeHtml(data.inviteCode)}</div>
+      </div>
+      <button id="copyInviteBtn" class="modal-btn primary">Kodu Kopyala</button>
+    `);
+
+    document.getElementById('copyInviteBtn').onclick = async () => {
+      try {
+        await navigator.clipboard.writeText(data.inviteCode);
+        showToast('Davet kodu kopyalandi.');
+      } catch {
+        showToast(`Davet kodu: ${data.inviteCode}`);
+      }
+    };
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+function joinServerByCode() {
+  showModal(`
+    <h2>Kodla Katil</h2>
+    <input id="joinServerCode" class="modal-input" placeholder="Davet kodu" />
+    <button id="submitJoinServer" class="modal-btn primary">Sunucuya Katil</button>
+  `);
+
+  document.getElementById('submitJoinServer').onclick = async () => {
+    try {
+      const inviteCode = document.getElementById('joinServerCode').value.trim().toUpperCase();
+      const data = await request(API.joinServer, {
+        method: 'POST',
+        body: JSON.stringify({
+          username: currentUser,
+          inviteCode
+        })
+      });
+
+      const existingIndex = appState.servers.findIndex((server) => server.id === data.server.id);
+      if (existingIndex >= 0) {
+        appState.servers[existingIndex] = data.server;
+      } else {
+        appState.servers.push(data.server);
+      }
+      hideModal();
+      switchServer(data.server.id);
+      showToast(`${data.server.name} sunucusuna katildin.`);
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+}
+
 function createChannel() {
   const server = getCurrentServer();
   if (!server) {
@@ -1958,6 +2028,8 @@ window.onload = () => {
   createServerBtn.onclick = createServer;
   createCategoryBtn.onclick = createCategory;
   createChannelBtn.onclick = createChannel;
+  inviteServerBtn.onclick = showInviteCode;
+  joinServerBtn.onclick = joinServerByCode;
   assignRoleBtn.onclick = assignRole;
   moderateBtn.onclick = moderateUser;
   reportBtn.onclick = reportUser;
