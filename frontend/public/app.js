@@ -124,6 +124,44 @@ function request(url, options = {}) {
   });
 }
 
+function resizeImageFile(file, maxSize = 320, quality = 0.82) {
+  return new Promise((resolve, reject) => {
+    if (!file) {
+      resolve(null);
+      return;
+    }
+
+    if (!file.type.startsWith('image/')) {
+      reject(new Error('Lutfen bir gorsel sec.'));
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      const image = new Image();
+      image.onload = () => {
+        const scale = Math.min(1, maxSize / Math.max(image.width, image.height));
+        const canvas = document.createElement('canvas');
+        canvas.width = Math.max(1, Math.round(image.width * scale));
+        canvas.height = Math.max(1, Math.round(image.height * scale));
+        const context = canvas.getContext('2d');
+
+        if (!context) {
+          resolve(reader.result);
+          return;
+        }
+
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL('image/jpeg', quality));
+      };
+      image.onerror = () => reject(new Error('Gorsel okunamadi.'));
+      image.src = reader.result;
+    };
+    reader.onerror = () => reject(new Error('Dosya okunamadi.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 function getCurrentServer() {
   return appState.servers.find((server) => server.id === currentServerId);
 }
@@ -1061,28 +1099,26 @@ function showUserProfile(username) {
         return;
       }
 
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          await request(API.avatar, {
-            method: 'POST',
-            body: JSON.stringify({
-              username: currentUser,
-              avatar: reader.result
-            })
-          });
-          const targetUser = getUserRecord(currentUser);
-          if (targetUser) {
-            targetUser.avatar = reader.result;
-          }
-          hideModal();
-          renderAll();
-          showToast('Profil fotosu guncellendi.');
-        } catch (error) {
-          alert(error.message);
+      try {
+        const optimizedAvatar = await resizeImageFile(file);
+        const targetUser = getUserRecord(currentUser);
+        if (targetUser) {
+          targetUser.avatar = optimizedAvatar;
         }
-      };
-      reader.readAsDataURL(file);
+        hideModal();
+        renderAll();
+        showToast('Profil fotosu yukleniyor...');
+        await request(API.avatar, {
+          method: 'POST',
+          body: JSON.stringify({
+            username: currentUser,
+            avatar: optimizedAvatar
+          })
+        });
+        showToast('Profil fotosu guncellendi.');
+      } catch (error) {
+        alert(error.message);
+      }
     };
   }
 
@@ -1606,15 +1642,8 @@ function showRegister() {
         return;
       }
 
-      const reader = new FileReader();
-      reader.onload = async () => {
-        try {
-          await submitRegister(reader.result);
-        } catch (error) {
-          alert(error.message);
-        }
-      };
-      reader.readAsDataURL(file);
+      const optimizedAvatar = await resizeImageFile(file);
+      await submitRegister(optimizedAvatar);
     } catch (error) {
       alert(error.message);
     }
