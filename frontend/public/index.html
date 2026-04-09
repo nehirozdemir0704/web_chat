@@ -6,18 +6,18 @@
   <title>Topluluk Sunucusu MVP</title>
   <style>
     :root {
-      --bg: #2b2d31;
-      --panel: #313338;
-      --panel-2: #1e1f22;
-      --panel-3: #232428;
-      --line: #3b3d44;
-      --text: #f2f3f5;
-      --muted: #a7acb6;
-      --accent: #5865f2;
-      --accent-2: #23a55a;
-      --danger: #da373c;
-      --warning: #f39c12;
-      --shadow: 0 10px 30px rgba(0, 0, 0, 0.24);
+      --bg: #170f1b;
+      --panel: rgba(54, 35, 52, 0.82);
+      --panel-2: rgba(35, 24, 38, 0.88);
+      --panel-3: rgba(44, 28, 45, 0.92);
+      --line: rgba(255, 192, 203, 0.12);
+      --text: #f9edf6;
+      --muted: #caa9bf;
+      --accent: #ff63b8;
+      --accent-2: #4cd486;
+      --danger: #ef5a71;
+      --warning: #f5b454;
+      --shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
     }
 
     body.light-mode {
@@ -43,7 +43,11 @@
       margin: 0;
       font-family: "Segoe UI", sans-serif;
       color: var(--text);
-      background: var(--bg);
+      background:
+        radial-gradient(circle at top left, rgba(255, 105, 180, 0.18), transparent 28%),
+        radial-gradient(circle at top right, rgba(255, 182, 193, 0.1), transparent 24%),
+        linear-gradient(180deg, #21111e 0%, #170f1b 52%, #120d19 100%);
+      background-color: var(--bg);
       min-height: 100vh;
     }
 
@@ -66,7 +70,9 @@
 
     .servers {
       border-right: 1px solid var(--line);
-      background: #1a1b1e;
+      background:
+        linear-gradient(180deg, rgba(35, 19, 34, 0.95), rgba(24, 15, 28, 0.98));
+      backdrop-filter: blur(16px);
       display: flex;
       flex-direction: column;
       gap: 14px;
@@ -92,7 +98,7 @@
       height: 46px;
       border: 0;
       border-radius: 50%;
-      background: #313338;
+      background: rgba(255, 255, 255, 0.06);
       color: var(--text);
       cursor: pointer;
       transition: transform 0.18s ease, border-radius 0.18s ease, background 0.18s ease;
@@ -119,10 +125,11 @@
 
     .server-pill.active,
     .server-pill:hover {
-      background: var(--accent);
+      background: linear-gradient(135deg, #ff63b8, #ff8cca);
       color: white;
       border-radius: 16px;
       transform: translateY(-2px);
+      box-shadow: 0 12px 24px rgba(255, 99, 184, 0.28);
     }
 
     .icon-btn {
@@ -130,16 +137,18 @@
       height: 46px;
       border-radius: 50%;
       border: 0;
-      background: var(--accent);
+      background: linear-gradient(135deg, #ff63b8, #ff8cca);
       color: var(--text);
       cursor: pointer;
       font-size: 24px;
-      box-shadow: 0 10px 24px rgba(88, 101, 242, 0.28);
+      box-shadow: 0 12px 28px rgba(255, 99, 184, 0.28);
     }
 
     .channels {
       border-right: 1px solid var(--line);
-      background: #2b2d31;
+      background:
+        linear-gradient(180deg, rgba(44, 27, 42, 0.92), rgba(29, 20, 34, 0.96));
+      backdrop-filter: blur(20px);
       display: flex;
       flex-direction: column;
       gap: 14px;
@@ -152,7 +161,7 @@
       background: transparent;
       border: 0;
       box-shadow: none;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+      border-bottom: 1px solid rgba(255, 192, 203, 0.12);
     }
 
     .brand h1,
@@ -198,11 +207,12 @@
     }
 
     .action-btn {
-      background: #35373c;
+      background: rgba(255, 255, 255, 0.05);
       color: var(--text);
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 192, 203, 0.1);
       font-size: 12px;
       padding: 10px 12px;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
     }
 
     .action-btn.wide {
@@ -234,7 +244,7 @@
       cursor: pointer;
       border-radius: 6px;
       background: transparent;
-      color: #b5bac1;
+      color: #d8bdd0;
       padding: 7px 8px;
       text-align: left;
       font-size: 16px;
@@ -243,15 +253,17 @@
 
     .channel-item.active,
     .channel-item:hover {
-      background: #404249;
-      color: #f2f3f5;
+      background: rgba(255, 255, 255, 0.08);
+      color: #fff4fb;
     }
 
     .workspace {
       display: grid;
       grid-template-rows: auto 1fr auto;
       gap: 0;
-      background: #313338;
+      background:
+        radial-gradient(circle at top, rgba(255, 105, 180, 0.08), transparent 24%),
+        linear-gradient(180deg, rgba(47, 29, 46, 0.96), rgba(28, 20, 34, 0.98));
     }
 
     .workspace-header,
@@ -271,7 +283,7 @@
       align-items: center;
       gap: 16px;
       border-bottom: 1px solid var(--line);
-      box-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
+      box-shadow: 0 1px 0 rgba(255, 192, 203, 0.06);
     }
 
     .pinned-bar {
@@ -280,7 +292,7 @@
       gap: 10px;
       padding: 10px 18px;
       border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-      background: rgba(255, 255, 255, 0.02);
+      background: rgba(255, 255, 255, 0.03);
       color: var(--muted);
       font-size: 12px;
     }
@@ -310,12 +322,12 @@
     }
 
     .badge {
-      background: rgba(88, 101, 242, 0.18);
-      color: #c7ceff;
+      background: rgba(255, 99, 184, 0.16);
+      color: #ffd5e9;
     }
 
     .presence {
-      background: rgba(255, 255, 255, 0.08);
+      background: rgba(255, 255, 255, 0.06);
       color: var(--text);
     }
 
@@ -413,7 +425,7 @@
     }
 
     .message-row:hover {
-      background: rgba(255, 255, 255, 0.03);
+      background: rgba(255, 255, 255, 0.04);
     }
 
     .message-row.mention-highlight {
@@ -451,8 +463,8 @@
       margin-top: 6px;
       max-width: 320px;
       border-radius: 10px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 192, 203, 0.08);
       overflow: hidden;
     }
 
@@ -515,7 +527,7 @@
     .tiny-action {
       border: 0;
       border-radius: 999px;
-      background: #232428;
+      background: rgba(255, 255, 255, 0.06);
       color: var(--text);
       padding: 1px 5px;
       cursor: pointer;
@@ -523,8 +535,8 @@
     }
 
     .reaction-chip.active {
-      background: rgba(88, 101, 242, 0.24);
-      color: #dbe0ff;
+      background: rgba(255, 99, 184, 0.22);
+      color: #ffe3f1;
     }
 
     .tiny-action {
@@ -541,7 +553,7 @@
       display: grid;
       gap: 6px;
       border-top: 1px solid var(--line);
-      background: #313338;
+      background: rgba(49, 30, 47, 0.96);
     }
 
     .composer-row {
@@ -556,7 +568,7 @@
       height: 38px;
       border-radius: 50%;
       border: 0;
-      background: #404249;
+      background: rgba(255, 255, 255, 0.08);
       color: #dcddde;
       display: grid;
       place-items: center;
@@ -570,8 +582,8 @@
     .modal-input {
       width: 100%;
       border-radius: 8px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      background: #383a40;
+      border: 1px solid rgba(255, 192, 203, 0.12);
+      background: rgba(255, 255, 255, 0.05);
       color: var(--text);
       padding: 11px 12px;
     }
@@ -593,7 +605,9 @@
       display: grid;
       gap: 0;
       align-content: start;
-      background: #2b2d31;
+      background:
+        linear-gradient(180deg, rgba(44, 27, 42, 0.92), rgba(28, 20, 34, 0.96));
+      backdrop-filter: blur(20px);
     }
 
     .sidebar-panel {
@@ -623,8 +637,8 @@
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      background: rgba(88, 101, 242, 0.18);
-      color: #d7dcff;
+      background: rgba(255, 99, 184, 0.18);
+      color: #ffd9eb;
       font-size: 11px;
       font-weight: 700;
     }
@@ -636,8 +650,8 @@
     .permission-card {
       border-radius: 10px;
       padding: 8px 10px;
-      background: #35373c;
-      border: 1px solid rgba(255, 255, 255, 0.03);
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 192, 203, 0.08);
     }
 
     .permission-tags {
@@ -1049,19 +1063,20 @@
       width: 44px;
       height: 44px;
       border-radius: 50%;
-      background: #313338;
+      background: rgba(255, 255, 255, 0.06);
       display: grid;
       place-items: center;
-      color: #dbdee1;
+      color: #f4d9e9;
       font-weight: 700;
       border: 0;
       cursor: pointer;
       transition: background 0.18s ease, border-radius 0.18s ease, transform 0.18s ease;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
     }
 
     .nav-dot:hover,
     .nav-dot:focus-visible {
-      background: var(--accent);
+      background: linear-gradient(135deg, #ff63b8, #ff8cca);
       border-radius: 16px;
       transform: translateY(-1px);
     }
@@ -1072,11 +1087,11 @@
     }
 
     .server-info-card {
-      background: #2f3136;
-      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.045);
+      border-radius: 16px;
       padding: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.03);
-      box-shadow: none;
+      border: 1px solid rgba(255, 192, 203, 0.08);
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
     }
 
     .channel-section {
@@ -1106,19 +1121,19 @@
     }
 
     .voice-green {
-      background: var(--accent-2);
+      background: linear-gradient(135deg, #45ca7d, #62df96);
     }
 
     .voice-red {
-      background: var(--danger);
+      background: linear-gradient(135deg, #ef5a71, #ff7c8f);
     }
 
     .warning-btn {
-      background: var(--warning);
+      background: linear-gradient(135deg, #f0a945, #f7c366);
     }
 
     .logout-btn {
-      background: var(--danger);
+      background: linear-gradient(135deg, #ef5a71, #ff7c8f);
       border: 0;
       border-radius: 8px;
       padding: 10px 12px;
@@ -1137,8 +1152,8 @@
 
     .icon-action {
       border: 0;
-      background: #2b2d31;
-      color: #b5bac1;
+      background: rgba(255, 255, 255, 0.05);
+      color: #d8bdd0;
       cursor: pointer;
       font-size: 14px;
       width: 28px;
@@ -1149,8 +1164,8 @@
     }
 
     .icon-action:hover {
-      background: #404249;
-      color: #f2f3f5;
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff4fb;
     }
 
     .member-tabs {
@@ -1162,13 +1177,13 @@
     .member-tab {
       border-radius: 8px;
       padding: 9px 10px;
-      background: #232428;
+      background: rgba(255, 255, 255, 0.05);
       text-align: center;
       font-weight: 700;
     }
 
     .member-tab.active {
-      background: var(--accent);
+      background: linear-gradient(135deg, #ff63b8, #ff8cca);
     }
 
     .member-tab {
@@ -1191,7 +1206,7 @@
 
     .message-author {
       font-weight: 700;
-      color: #d7dbdf;
+      color: #f6e8f1;
       font-size: 12px;
     }
 
@@ -1207,7 +1222,7 @@
       place-items: center;
       font-size: 10px;
       font-weight: 800;
-      background: linear-gradient(135deg, #5865f2, #7983f5);
+      background: linear-gradient(135deg, #ff63b8, #ff8cca);
       color: white;
       text-transform: uppercase;
       margin-top: 1px;
@@ -1217,7 +1232,7 @@
 
     .avatar-image {
       object-fit: cover;
-      background: #232428;
+      background: #231824;
     }
 
     .member-avatar {
@@ -1228,7 +1243,7 @@
       place-items: center;
       font-size: 11px;
       font-weight: 800;
-      background: linear-gradient(135deg, #5865f2, #7983f5);
+      background: linear-gradient(135deg, #ff63b8, #ff8cca);
       color: white;
       object-fit: cover;
       overflow: hidden;
@@ -1243,7 +1258,7 @@
       place-items: center;
       font-size: 24px;
       font-weight: 800;
-      background: linear-gradient(135deg, #5865f2, #7983f5);
+      background: linear-gradient(135deg, #ff63b8, #ff8cca);
       color: white;
       object-fit: cover;
       overflow: hidden;
@@ -1261,8 +1276,8 @@
       margin: 26px 18px 0;
       padding: 18px 20px;
       border-radius: 14px;
-      background: rgba(255, 255, 255, 0.03);
-      border: 1px solid rgba(255, 255, 255, 0.04);
+      background: rgba(255, 255, 255, 0.04);
+      border: 1px solid rgba(255, 192, 203, 0.08);
       color: var(--muted);
       max-width: 560px;
     }
@@ -1286,10 +1301,10 @@
     }
 
     .video-card {
-      background: #232428;
+      background: rgba(255, 255, 255, 0.04);
       border-radius: 10px;
       overflow: hidden;
-      border: 1px solid rgba(255, 255, 255, 0.05);
+      border: 1px solid rgba(255, 192, 203, 0.08);
     }
 
     .video-card video {
