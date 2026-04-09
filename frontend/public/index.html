@@ -716,11 +716,15 @@
 
     .modal-overlay.auth-overlay {
       position: relative;
+      min-height: 100vh;
+      background-color: #160d18;
       background:
         radial-gradient(circle at 18% 20%, rgba(255, 105, 180, 0.28), transparent 26%),
         radial-gradient(circle at 82% 18%, rgba(255, 182, 193, 0.24), transparent 24%),
+        radial-gradient(circle at 18% 88%, rgba(255, 120, 191, 0.2), transparent 28%),
+        radial-gradient(circle at 84% 84%, rgba(255, 182, 193, 0.18), transparent 30%),
         radial-gradient(circle at 50% 82%, rgba(255, 105, 180, 0.2), transparent 30%),
-        linear-gradient(145deg, rgba(30, 11, 29, 0.97), rgba(15, 15, 23, 0.98));
+        linear-gradient(180deg, rgba(48, 18, 41, 0.98) 0%, rgba(27, 12, 30, 0.98) 46%, rgba(18, 10, 24, 0.99) 100%);
       overflow: hidden;
     }
 
@@ -749,7 +753,7 @@
 
     .modal-overlay.auth-overlay::after {
       right: 8%;
-      bottom: 6%;
+      bottom: 2%;
       background: radial-gradient(circle, rgba(255, 182, 193, 0.5), transparent 70%);
       animation-delay: -3s;
     }
