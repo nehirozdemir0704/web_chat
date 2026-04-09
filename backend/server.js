@@ -3,6 +3,7 @@ const fs = require('fs');
 const http = require('http');
 const os = require('os');
 const path = require('path');
+const { Pool } = require('pg');
 const WebSocket = require('ws');
 
 const app = express();
@@ -12,6 +13,15 @@ const wss = new WebSocket.Server({ server });
 const DATA_DIR = path.join(__dirname, 'data');
 const STATE_FILE = path.join(DATA_DIR, 'state.json');
 const FRONTEND_DIR = path.join(__dirname, '..', 'frontend', 'public');
+const DATABASE_URL = process.env.DATABASE_URL || '';
+const pgPool = DATABASE_URL
+  ? new Pool({
+      connectionString: DATABASE_URL,
+      ssl: DATABASE_URL.includes('localhost') || DATABASE_URL.includes('127.0.0.1')
+        ? false
+        : { rejectUnauthorized: false }
+    })
+  : null;
 
 app.use(express.json({ limit: '10mb' }));
 
@@ -186,13 +196,72 @@ function normalizeState(loadedState) {
   return nextState;
 }
 
-let state = normalizeState(loadState());
+let persistenceMode = pgPool ? 'postgres' : 'file';
+let state = normalizeState(defaultState());
 const callPresence = {};
 const onlineUsers = new Set();
 const typingState = {};
+let saveChain = Promise.resolve();
 
 function saveState() {
-  fs.writeFileSync(STATE_FILE, JSON.stringify(state, null, 2));
+  const snapshot = JSON.parse(JSON.stringify(state));
+  saveChain = saveChain
+    .then(() => persistState(snapshot))
+    .catch((error) => {
+      console.error('State persistence failed:', error);
+    });
+  return saveChain;
+}
+
+async function persistState(snapshot) {
+  if (pgPool) {
+    await pgPool.query(
+      `
+        INSERT INTO app_state (id, state_json, updated_at)
+        VALUES (1, $1::jsonb, NOW())
+        ON CONFLICT (id)
+        DO UPDATE SET state_json = EXCLUDED.state_json, updated_at = NOW()
+      `,
+      [JSON.stringify(snapshot)]
+    );
+    return;
+  }
+
+  ensureDataDir();
+  fs.writeFileSync(STATE_FILE, JSON.stringify(snapshot, null, 2));
+}
+
+async function initializePersistence() {
+  if (!pgPool) {
+    state = normalizeState(loadState());
+    return;
+  }
+
+  try {
+    await pgPool.query(`
+      CREATE TABLE IF NOT EXISTS app_state (
+        id INTEGER PRIMARY KEY,
+        state_json JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )
+    `);
+
+    const existing = await pgPool.query('SELECT state_json FROM app_state WHERE id = 1');
+    if (existing.rows[0]?.state_json) {
+      state = normalizeState(existing.rows[0].state_json);
+      persistenceMode = 'postgres';
+      return;
+    }
+
+    const seededState = normalizeState(loadState());
+    state = seededState;
+    await persistState(seededState);
+    persistenceMode = 'postgres';
+  } catch (error) {
+    console.error('PostgreSQL unavailable, file persistence fallback enabled:', error.message);
+    persistenceMode = 'file';
+    state = normalizeState(loadState());
+  }
 }
 
 function sanitizeUser(user) {
@@ -638,7 +707,8 @@ app.get('/healthz', (req, res) => {
     ok: true,
     timestamp: now(),
     users: state.users.length,
-    servers: state.servers.length
+    servers: state.servers.length,
+    persistence: persistenceMode
   });
 });
 
@@ -1555,10 +1625,18 @@ app.use((req, res, next) => {
 const PORT = process.env.PORT || 3000;
 const HOST = process.env.HOST || '0.0.0.0';
 
-server.listen(PORT, HOST, () => {
-  const localIp = getLocalIpAddress();
-  console.log(`Server running at http://localhost:${PORT}`);
-  if (localIp) {
-    console.log(`LAN access: http://${localIp}:${PORT}`);
-  }
-});
+initializePersistence()
+  .then(() => {
+    server.listen(PORT, HOST, () => {
+      const localIp = getLocalIpAddress();
+      console.log(`Server running at http://localhost:${PORT}`);
+      console.log(`Persistence mode: ${persistenceMode}`);
+      if (localIp) {
+        console.log(`LAN access: http://${localIp}:${PORT}`);
+      }
+    });
+  })
+  .catch((error) => {
+    console.error('Server startup failed:', error);
+    process.exit(1);
+  });
