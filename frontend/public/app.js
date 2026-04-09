@@ -109,6 +109,7 @@ const attachmentInput = document.getElementById('attachmentInput');
 let currentTheme = localStorage.getItem('community-theme') || 'dark';
 let micEnabled = true;
 let cameraEnabled = true;
+let lastSeenMarkers = {};
 
 function applyTheme(theme) {
   currentTheme = theme;
@@ -128,6 +129,50 @@ function request(url, options = {}) {
     }
     return data;
   });
+}
+
+function lastSeenStorageKey() {
+  return `community-last-seen:${currentUser || 'guest'}`;
+}
+
+function loadLastSeenMarkers() {
+  try {
+    lastSeenMarkers = JSON.parse(localStorage.getItem(lastSeenStorageKey()) || '{}');
+    if (!lastSeenMarkers || typeof lastSeenMarkers !== 'object') {
+      lastSeenMarkers = {};
+    }
+  } catch {
+    lastSeenMarkers = {};
+  }
+}
+
+function saveLastSeenMarkers() {
+  localStorage.setItem(lastSeenStorageKey(), JSON.stringify(lastSeenMarkers));
+}
+
+function conversationKey() {
+  return activeSidebarTab === 'dm' && activeDmUser
+    ? `dm:${activeDmUser}`
+    : `channel:${currentChannelId}`;
+}
+
+function getUnreadBoundary(list) {
+  const key = conversationKey();
+  const lastSeenTime = lastSeenMarkers[key] || 0;
+  if (!lastSeenTime) {
+    return -1;
+  }
+  return list.findIndex((message) => message.time > lastSeenTime && message.user !== currentUser);
+}
+
+function markConversationSeen() {
+  const list = getActiveConversationMessages();
+  const latest = [...list].reverse().find((message) => message.user !== currentUser) || list[list.length - 1];
+  if (!latest) {
+    return;
+  }
+  lastSeenMarkers[conversationKey()] = latest.time;
+  saveLastSeenMarkers();
 }
 
 function notificationStorageKey() {
@@ -877,9 +922,10 @@ function renderMessages() {
   }
 
   let lastDateKey = '';
+  const unreadBoundaryIndex = getUnreadBoundary(list);
   const server = getCurrentServer();
   const pinnedIds = server?.pinnedMessageIds || [];
-  list.forEach((message) => {
+  list.forEach((message, index) => {
     const messageDateKey = new Date(message.time).toDateString();
     if (messageDateKey !== lastDateKey) {
       const divider = document.createElement('div');
@@ -887,6 +933,13 @@ function renderMessages() {
       divider.textContent = formatDateLabel(message.time);
       chatArea.appendChild(divider);
       lastDateKey = messageDateKey;
+    }
+
+    if (index === unreadBoundaryIndex) {
+      const unreadDivider = document.createElement('div');
+      unreadDivider.className = 'unread-divider';
+      unreadDivider.textContent = 'Okunmamis mesajlar';
+      chatArea.appendChild(unreadDivider);
     }
 
     const row = document.createElement('div');
@@ -1552,6 +1605,7 @@ function switchChannel(channelId) {
       channelId
     }));
   }
+  markConversationSeen();
   renderAll();
 }
 
@@ -1566,6 +1620,7 @@ function openDm(username) {
       peerUsername: username
     }));
   }
+  markConversationSeen();
   renderAll();
 }
 
@@ -1590,6 +1645,9 @@ function connectWS() {
       if (activeSidebarTab === 'members') {
         appState.messages[data.channelId] = data.messages;
       }
+      if (data.channelId === currentChannelId && activeSidebarTab === 'members') {
+        markConversationSeen();
+      }
       renderMessages();
       return;
     }
@@ -1599,6 +1657,7 @@ function connectWS() {
       appState.directMessages[data.peerUsername] = data.messages;
       if (activeSidebarTab === 'dm' && activeDmUser === data.peerUsername) {
         unreadDmCounts[data.peerUsername] = 0;
+        markConversationSeen();
         renderMessages();
       } else {
         const incomingCount = Math.max(0, data.messages.length - previousCount);
@@ -1768,6 +1827,7 @@ async function bootstrap() {
   const data = await request(`${API.bootstrap}?username=${encodeURIComponent(currentUser)}`);
   appState = data;
   loadNotificationCenter();
+  loadLastSeenMarkers();
   syncSocialState(appState.social);
   unreadDmCounts = {};
   currentServerId = appState.servers[0]?.id || null;
@@ -1775,6 +1835,7 @@ async function bootstrap() {
   currentVoiceChannelId = appState.presence[currentUser]?.voiceChannelId || null;
   appState.callPresence = appState.callPresence || {};
   presenceSelect.value = appState.presence[currentUser]?.status || 'online';
+  markConversationSeen();
   renderAll();
   connectWS();
 }
