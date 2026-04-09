@@ -1128,8 +1128,8 @@
 
       <section class="server-info-card">
         <div class="channel-section">Sunucu Bilgisi</div>
-        <h3 style="margin-bottom:8px;" id="serverInfoName">Web Chat Server</h3>
-        <div class="panel-subtitle">Kanallar, DM, voice room ve moderasyon</div>
+        <h3 style="margin-bottom:8px;" id="serverInfoName">Topluluk Sunucusu</h3>
+        <div class="panel-subtitle">Kanallar, direkt mesaj, sesli oda ve moderasyon</div>
       </section>
 
       <section class="action-grid">
@@ -1154,7 +1154,7 @@
 
       <section class="server-info-card">
         <div style="display:grid; gap:6px;">
-          <div id="userBadge" class="badge">guest</div>
+          <div id="userBadge" class="badge">misafir</div>
           <div class="panel-subtitle">Sunucudaki rolun ve durumun burada gorunur.</div>
         </div>
         <div class="action-grid" style="margin-top:12px;">
@@ -1170,13 +1170,13 @@
       <header class="workspace-header">
         <div>
           <h2 id="currentLocation">Sunucu / Kanal</h2>
-          <div id="helperText" class="helper-text">Topluluk metin kanali</div>
+          <div id="helperText" class="helper-text">Topluluk yazi kanali</div>
         </div>
         <div class="workspace-meta">
           <select id="presenceSelect">
-            <option value="online">online</option>
-            <option value="away">away</option>
-            <option value="busy">busy</option>
+            <option value="online">cevrimici</option>
+            <option value="away">uzakta</option>
+            <option value="busy">mesgul</option>
           </select>
           <div class="top-actions">
             <button id="searchBtn" class="icon-action" title="Ara">🔎</button>
@@ -1196,7 +1196,7 @@
       <section id="chatArea" class="chat-area"></section>
 
       <footer class="composer">
-        <div class="helper-line">Komutlar: /help, /stats, /poll soru | secenek1 | secenek2, /report mantigi panelden, moderasyon admin/mod uzerinden calisir.</div>
+        <div class="helper-line">Komutlar: /help, /stats, /poll soru | secenek1 | secenek2, /report mantigi panelden, moderasyon yonetici/moderatör uzerinden calisir.</div>
         <div class="composer-row">
           <button id="composerAddBtn" class="composer-addon" title="Hizli Ekle">+</button>
           <input id="messageInput" placeholder="Mesaj gonder" />
@@ -1209,13 +1209,13 @@
       <section class="sidebar-panel">
         <div class="member-tabs">
           <button id="membersTabBtn" class="member-tab active">Uyeler</button>
-          <button id="dmTabBtn" class="member-tab">DM</button>
+          <button id="dmTabBtn" class="member-tab">Mesajlar</button>
         </div>
       </section>
 
       <section class="sidebar-panel">
         <div class="panel-title">Goruntulu Konusma</div>
-        <div class="panel-subtitle">Ayni kanaldaki kullanicilarla WebRTC gorusme</div>
+        <div class="panel-subtitle">Ayni kanaldaki kullanicilarla goruntulu gorusme</div>
         <div class="video-actions">
           <button id="startVideoBtn" class="voice-green">Baslat</button>
           <button id="endVideoBtn" class="voice-red">Bitir</button>

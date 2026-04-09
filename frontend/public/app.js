@@ -311,6 +311,16 @@ function userInitials(username) {
   return (username || '?').trim().slice(0, 1).toUpperCase();
 }
 
+function turkceDurum(status) {
+  const map = { online: 'cevrimici', offline: 'cevrimdisi', away: 'uzakta', busy: 'mesgul' };
+  return map[status] || status;
+}
+
+function turkceRol(role) {
+  const map = { admin: 'yonetici', mod: 'moderatör', member: 'uye' };
+  return map[role] || role;
+}
+
 function getUserRecord(username) {
   return appState.users.find((user) => user.username === username) || null;
 }
@@ -335,7 +345,7 @@ function canManageMessage(message) {
 function roleBadgeMarkup(username) {
   const server = getCurrentServer();
   const role = server?.members.find((member) => member.username === username)?.role || 'member';
-  return `<span class="role-badge ${role}">${escapeHtml(role)}</span>`;
+  return `<span class="role-badge ${role}">${escapeHtml(turkceRol(role))}</span>`;
 }
 
 function getPinnedMessage() {
@@ -612,14 +622,14 @@ function renderHeader() {
   }
 
   currentLocation.textContent = activeSidebarTab === 'dm' && activeDmUser
-    ? `DM / ${activeDmUser}`
+    ? `Mesaj / ${activeDmUser}`
     : `${channel.kind === 'voice' ? '🔊' : '#'} ${channel.name}`;
   const me = server.members.find((member) => member.username === currentUser);
-  userBadge.textContent = `${currentUser} (${me?.role || 'member'})`;
+  userBadge.textContent = `${currentUser} (${turkceRol(me?.role || 'member')})`;
   serverInfoName.textContent = server.name;
   helperText.textContent = activeSidebarTab === 'dm'
-    ? 'Direkt mesajlasma alani'
-    : (channel.kind === 'voice' ? 'Sesli oda kanali' : 'Topluluk metin kanali');
+    ? 'Direkt mesaj alani'
+    : (channel.kind === 'voice' ? 'Sesli oda kanali' : 'Topluluk yazi kanali');
   pinnedMessageText.textContent = getPinnedMessage();
   deleteServerBtn.style.display = server.isCreator ? 'inline-flex' : 'none';
 }
@@ -632,7 +642,8 @@ function renderMessages() {
     const empty = document.createElement('div');
     empty.className = 'chat-empty';
     empty.innerHTML = `
-      <strong>${escapeHtml(activeSidebarTab === 'dm' && activeDmUser ? `${activeDmUser} ile DM` : `${channel?.name || 'kanal'} alanina hos geldin`)}</strong>
+      <strong>${escapeHtml(activeSidebarTab === 'dm' && activeDmUser ? `${activeDmUser} ile ozel mesaj` : `${channel?.name || 'kanal'} alanina hos geldin`)}</strong>
+      <div>${escapeHtml(activeSidebarTab === 'dm' ? `${activeDmUser} ile ozel mesajlasma buradan gorunur.` : '')}</div>
       <div>${escapeHtml(activeSidebarTab === 'dm' ? 'Bu ozel konusmada henuz mesaj yok. Ilk mesaji gondererek akisi baslatabilirsin.' : 'Bu kanalda henuz mesaj yok. Toplulugu baslatmak icin ilk mesaji sen gonderebilirsin.')}</div>
     `;
     chatArea.appendChild(empty);
@@ -815,11 +826,11 @@ function renderMembers() {
         ${avatarMarkup(member.username, 'member-avatar')}
         <div>
           <div class="member-name">${member.username}</div>
-          <div class="member-role">${member.role.toUpperCase()}</div>
+          <div class="member-role">${turkceRol(member.role)}</div>
         </div>
       </div>
       <div class="member-actions">
-        <span class="presence ${presence}">${presence}</span>
+        <span class="presence ${presence}">${turkceDurum(presence)}</span>
         <button class="mini-action-btn member-profile-btn" data-username="${member.username}">Profil</button>
       </div>
     `;
@@ -838,7 +849,7 @@ function renderMembers() {
 function renderDmList() {
   dmList.innerHTML = '';
   const users = appState.users.filter((user) => user.username !== currentUser);
-  membersPanelTitle.textContent = 'DM';
+  membersPanelTitle.textContent = 'Mesajlar';
   membersPanelSubtitle.textContent = `${users.length} kullanici ile direkt mesaj`;
   membersCountPill.textContent = String(users.length);
   dmList.innerHTML = users.map((user) => `
@@ -850,7 +861,7 @@ function renderDmList() {
         <span>${escapeHtml(user.username)}</span>
         <span style="display:flex; gap:8px; align-items:center;">
           ${unreadDmCounts[user.username] ? `<span class="badge-dot">${unreadDmCounts[user.username]}</span>` : ''}
-          <span class="presence ${presence}">${presence}</span>
+          <span class="presence ${presence}">${turkceDurum(presence)}</span>
         </span>
       </button>
       <button class="mini-action-btn dm-profile-btn" data-username="${user.username}">Profil</button>
@@ -895,9 +906,9 @@ function showUserProfile(username) {
     <div style="display:flex; justify-content:center; margin-bottom:4px;">${avatarMarkup(username, 'profile-avatar')}</div>
     <div class="report-card">
       <div><strong>${escapeHtml(username)}</strong></div>
-      <div class="report-meta">Durum: ${escapeHtml(presence)}</div>
-      <div class="report-meta">Rol: ${escapeHtml((member?.role || 'member').toUpperCase())}</div>
-      <div class="report-meta">DM sayisi: ${dmCount}</div>
+      <div class="report-meta">Durum: ${escapeHtml(turkceDurum(presence))}</div>
+      <div class="report-meta">Rol: ${escapeHtml(turkceRol(member?.role || 'member'))}</div>
+      <div class="report-meta">Mesaj sayisi: ${dmCount}</div>
       <div class="report-meta">Sesli oda: ${escapeHtml(voiceChannel?.name || 'yok')}</div>
       ${username !== currentUser ? `<div class="report-meta">Iliski: ${blocked ? 'engelli' : (blockedByTarget ? 'seni engellemis' : (friend ? 'arkadas' : (incomingRequest ? 'gelen istek' : (outgoingRequest ? 'istek gonderildi' : 'normal'))))}</div>` : ''}
     </div>
@@ -917,11 +928,11 @@ function showUserProfile(username) {
     ` : ''}
     ${canModerateTarget ? `
       <div class="action-grid">
-        <button id="profileMuteBtn" class="modal-btn secondary">${isMuted ? 'Unmute' : 'Mute'}</button>
-        <button id="profileBanBtn" class="modal-btn primary">Ban</button>
+        <button id="profileMuteBtn" class="modal-btn secondary">${isMuted ? 'Susturmayi Kaldir' : 'Sustur'}</button>
+        <button id="profileBanBtn" class="modal-btn primary">Yasakla</button>
       </div>
     ` : ''}
-    <button id="profileDmBtn" class="modal-btn primary" ${dmBlocked ? 'disabled' : ''}>DM Ac</button>
+    <button id="profileDmBtn" class="modal-btn primary" ${dmBlocked ? 'disabled' : ''}>Mesaj Ac</button>
   `);
 
   const profileDmBtn = document.getElementById('profileDmBtn');
@@ -1076,7 +1087,7 @@ function showUserProfile(username) {
           })
         });
         hideModal();
-        showToast(`${username} icin ${isMuted ? 'unmute' : 'mute'} uygulandi.`);
+        showToast(`${username} icin ${isMuted ? 'susturma kaldirildi' : 'susturma uygulandi'}.`);
       } catch (error) {
         alert(error.message);
       }
@@ -1128,9 +1139,9 @@ function renderVoicePanel() {
   const list = targetChannel ? appState.voicePresence[targetChannel.id] || [] : voiceMembers;
 
   voicePanel.innerHTML = `
-    <div class="panel-title">Voice Room</div>
+    <div class="panel-title">Sesli Oda</div>
     <div class="voice-name">${title}</div>
-    <div class="voice-subtitle">Join/leave simulasyonu ve anlik presence</div>
+    <div class="voice-subtitle">Katil/ayril simulasyonu ve anlik durum</div>
     <div class="voice-members">
       ${(list.length ? list : ['Kimse odada degil.'])
         .map((username) => `<div class="voice-member">${username}</div>`)
@@ -1169,7 +1180,7 @@ function renderReports() {
           </div>
         `
       ).join('')
-    : '<div class="empty-state">Henuz moderasyon logu yok.</div>';
+    : '<div class="empty-state">Henuz moderasyon kaydi yok.</div>';
 
   reportList.innerHTML = `
     <div class="panel-subtitle">Raporlar</div>
@@ -1218,9 +1229,9 @@ function renderPermissions() {
           ({ category, channel }) => `
             <div class="permission-card">
               <div><strong>${category} / ${channel.name}</strong></div>
-              <div class="report-meta">${channel.kind}</div>
+              <div class="report-meta">${channel.kind === 'voice' ? 'sesli' : 'yazi'}</div>
               <div class="permission-tags">
-                ${channel.allowedRoles.map((role) => `<span class="mini-tag">${role}</span>`).join('')}
+                ${channel.allowedRoles.map((role) => `<span class="mini-tag">${turkceRol(role)}</span>`).join('')}
               </div>
             </div>
           `
@@ -1284,7 +1295,7 @@ function switchChannel(channelId) {
   }
 
   if (channel.kind === 'voice') {
-    showToast('Bu kanal sesli oda. Join Voice ile katilabilirsin.');
+    showToast('Bu kanal sesli oda. Katil butonuyla girebilirsin.');
   } else {
     showToast('Slash komutlari: /help, /stats, /poll soru | secenek1 | secenek2');
   }
@@ -1350,9 +1361,9 @@ function connectWS() {
         unreadDmCounts[data.peerUsername] = (unreadDmCounts[data.peerUsername] || 0) + incomingCount;
         if (incomingCount > 0) {
           playNotificationSound();
-          showToast(`${data.peerUsername} sana DM gonderdi.`);
+          showToast(`${data.peerUsername} sana ozel mesaj gonderdi.`);
           const latestMessage = data.messages[data.messages.length - 1];
-          showBrowserNotification(`${data.peerUsername} sana DM gonderdi`, latestMessage?.text || 'Yeni mesaj');
+          showBrowserNotification(`${data.peerUsername} sana ozel mesaj gonderdi`, latestMessage?.text || 'Yeni mesaj');
         }
       }
       renderDmList();
@@ -1544,7 +1555,7 @@ function showLogin() {
 function showRegister() {
   showModal(`
     <h2>Yeni Uye</h2>
-    <p class="modal-copy">Kayit olan herkes mevcut sunuculara member olarak eklenir.</p>
+    <p class="modal-copy">Kayit olan herkes varsayilan sunucuya uye olarak eklenir.</p>
     <input id="regUser" class="modal-input" placeholder="Kullanici adi" />
     <input id="regPass" class="modal-input" type="password" placeholder="Sifre" />
     <input id="regAvatar" class="modal-input" type="file" accept="image/*" />
@@ -1791,9 +1802,9 @@ function createChannel() {
     <select id="channelCategory" class="modal-input">
       ${server.categories.map((category) => `<option value="${category.id}">${category.name}</option>`).join('')}
     </select>
-    <label class="checkbox-row"><input id="roleMember" type="checkbox" checked /> member</label>
-    <label class="checkbox-row"><input id="roleMod" type="checkbox" checked /> mod</label>
-    <label class="checkbox-row"><input id="roleAdmin" type="checkbox" checked /> admin</label>
+    <label class="checkbox-row"><input id="roleMember" type="checkbox" checked /> uye</label>
+    <label class="checkbox-row"><input id="roleMod" type="checkbox" checked /> moderatör</label>
+    <label class="checkbox-row"><input id="roleAdmin" type="checkbox" checked /> yonetici</label>
     <button id="submitChannel" class="modal-btn primary">Kaydet</button>
   `);
 
@@ -1853,9 +1864,9 @@ function assignRole() {
       ${server.members.map((member) => `<option value="${member.username}">${member.username}</option>`).join('')}
     </select>
     <select id="roleValue" class="modal-input">
-      <option value="member">member</option>
-      <option value="mod">mod</option>
-      <option value="admin">admin</option>
+      <option value="member">uye</option>
+      <option value="mod">moderatör</option>
+      <option value="admin">yonetici</option>
     </select>
     <button id="submitRole" class="modal-btn primary">Guncelle</button>
   `);
@@ -1963,7 +1974,7 @@ function toggleVoice() {
   }
 
   if (!channel || channel.kind !== 'voice') {
-    alert('Bir sesli kanala gec ve sonra Join Voice kullan.');
+    alert('Bir sesli kanala gec ve sonra Katil butonunu kullan.');
     return;
   }
 
@@ -2139,7 +2150,7 @@ function showSearchModal() {
             ${avatarMarkup(user.username, 'member-avatar')}
             <div>
               <div class="member-name">${escapeHtml(user.username)}</div>
-              <div class="member-role">${escapeHtml(appState.presence[user.username]?.status || 'offline')}</div>
+              <div class="member-role">${escapeHtml(turkceDurum(appState.presence[user.username]?.status || 'offline'))}</div>
             </div>
           </div>
           <div class="member-actions">
