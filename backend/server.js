@@ -73,7 +73,9 @@ function defaultState() {
           }
         ],
         reports: [],
-        polls: []
+        polls: [],
+        pinnedMessageIds: [],
+        moderationLogs: []
       }
     ],
     messages: {
@@ -138,9 +140,17 @@ function normalizeState(loadedState) {
     }
   });
 
+  nextState.servers.forEach((server) => {
+    server.reports = Array.isArray(server.reports) ? server.reports : [];
+    server.polls = Array.isArray(server.polls) ? server.polls : [];
+    server.pinnedMessageIds = Array.isArray(server.pinnedMessageIds) ? server.pinnedMessageIds : [];
+    server.moderationLogs = Array.isArray(server.moderationLogs) ? server.moderationLogs : [];
+  });
+
   Object.keys(nextState.messages).forEach((channelId) => {
     nextState.messages[channelId] = (nextState.messages[channelId] || []).map((message) => ({
       reactions: {},
+      attachment: null,
       ...message
     }));
   });
@@ -294,7 +304,9 @@ function serializeServer(server, username) {
     })),
     categories: visibleCategories,
     reports: server.reports,
-    polls: server.polls
+    polls: server.polls,
+    pinnedMessageIds: server.pinnedMessageIds,
+    moderationLogs: server.moderationLogs
   };
 }
 
@@ -437,7 +449,7 @@ function postSystemMessage(channelId, text) {
     state.messages[channelId] = [];
   }
 
-  const message = { id: uid('msg'), user: 'system', text, time: now(), reactions: {} };
+  const message = { id: uid('msg'), user: 'system', text, time: now(), reactions: {}, attachment: null };
   state.messages[channelId].push(message);
   return message;
 }
@@ -461,6 +473,16 @@ function canModerateMessage(serverId, username) {
   }
   const member = getServerMember(serverItem, username);
   return Boolean(member && ['admin', 'mod'].includes(member.role));
+}
+
+function appendModerationLog(serverItem, entry) {
+  serverItem.moderationLogs = Array.isArray(serverItem.moderationLogs) ? serverItem.moderationLogs : [];
+  serverItem.moderationLogs.unshift({
+    id: uid('log'),
+    time: now(),
+    ...entry
+  });
+  serverItem.moderationLogs = serverItem.moderationLogs.slice(0, 30);
 }
 
 function sendChannelMessages(ws, channelId) {
@@ -651,7 +673,9 @@ app.post('/api/server', (req, res) => {
       }
     ],
     reports: [],
-    polls: []
+    polls: [],
+    pinnedMessageIds: [],
+    moderationLogs: []
   };
 
   state.servers.push(serverItem);
@@ -787,6 +811,12 @@ app.post('/api/moderation', (req, res) => {
   }
 
   const reportLine = `${actor} ${targetUser} kullanicisi icin ${action} islemi yapti. Sebep: ${reason || 'Belirtilmedi'}`;
+  appendModerationLog(serverItem, {
+    actor,
+    targetUser,
+    action,
+    reason: reason || 'Belirtilmedi'
+  });
   const modOnlyChannel = serverItem.categories.flatMap((category) => category.channels).find((channel) => channel.name === 'mod-only');
   if (modOnlyChannel) {
     postSystemMessage(modOnlyChannel.id, reportLine);
@@ -812,6 +842,12 @@ app.post('/api/report', (req, res) => {
     reason,
     status: 'open',
     time: now()
+  });
+  appendModerationLog(serverItem, {
+    actor: reporter,
+    targetUser,
+    action: 'report',
+    reason: reason || 'Belirtilmedi'
   });
   saveState();
   broadcastServer(serverId);
@@ -1078,7 +1114,8 @@ wss.on('connection', (ws) => {
         user: data.username,
         text: data.text,
         time: now(),
-        reactions: {}
+        reactions: {},
+        attachment: data.attachment || null
       };
 
       if (!state.messages[data.channelId]) {
@@ -1107,7 +1144,8 @@ wss.on('connection', (ws) => {
         text: data.text.trim(),
         time: now(),
         reactions: {},
-        seenBy: [data.username]
+        seenBy: [data.username],
+        attachment: data.attachment || null
       };
 
       state.directMessages[dmKey] = state.directMessages[dmKey] || [];
@@ -1159,6 +1197,42 @@ wss.on('connection', (ws) => {
         channelId: data.channelId,
         message
       });
+      return;
+    }
+
+    if (data.type === 'pinMessage') {
+      const serverItem = getServer(data.serverId);
+      if (!serverItem || !canModerateMessage(data.serverId, data.username)) {
+        return;
+      }
+
+      const message = getMessage(data.channelId, data.messageId);
+      if (!message) {
+        return;
+      }
+
+      serverItem.pinnedMessageIds = Array.isArray(serverItem.pinnedMessageIds) ? serverItem.pinnedMessageIds : [];
+      if (serverItem.pinnedMessageIds.includes(data.messageId)) {
+        serverItem.pinnedMessageIds = serverItem.pinnedMessageIds.filter((id) => id !== data.messageId);
+        appendModerationLog(serverItem, {
+          actor: data.username,
+          targetUser: message.user,
+          action: 'unpin',
+          reason: `Mesaj sabitlemesi kaldirildi: ${message.text.slice(0, 60)}`
+        });
+      } else {
+        serverItem.pinnedMessageIds.unshift(data.messageId);
+        serverItem.pinnedMessageIds = [...new Set(serverItem.pinnedMessageIds)].slice(0, 10);
+        appendModerationLog(serverItem, {
+          actor: data.username,
+          targetUser: message.user,
+          action: 'pin',
+          reason: `Mesaj sabitlendi: ${message.text.slice(0, 60)}`
+        });
+      }
+
+      saveState();
+      broadcastServer(data.serverId);
       return;
     }
 
