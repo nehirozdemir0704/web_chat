@@ -839,6 +839,9 @@ function showUserProfile(username) {
   const dmCount = (appState.directMessages[username] || []).length;
   const voiceEntry = Object.entries(appState.voicePresence).find(([, users]) => users.includes(username));
   const voiceChannel = server?.categories.flatMap((category) => category.channels).find((channel) => channel.id === voiceEntry?.[0]);
+  const myServerRole = myRole();
+  const canModerateTarget = username !== currentUser && ['admin', 'mod'].includes(myServerRole);
+  const isMuted = Boolean(user?.mutedUntil && user.mutedUntil > Date.now());
 
   showModal(`
     <h2>Kullanici Profili</h2>
@@ -853,6 +856,12 @@ function showUserProfile(username) {
     ${username === currentUser ? `
       <input id="avatarFileInput" type="file" accept="image/*" class="modal-input" />
       <button id="saveAvatarBtn" class="modal-btn secondary">Profil Fotosu Yukle</button>
+    ` : ''}
+    ${canModerateTarget ? `
+      <div class="action-grid">
+        <button id="profileMuteBtn" class="modal-btn secondary">${isMuted ? 'Unmute' : 'Mute'}</button>
+        <button id="profileBanBtn" class="modal-btn primary">Ban</button>
+      </div>
     ` : ''}
     <button id="profileDmBtn" class="modal-btn primary">DM Ac</button>
   `);
@@ -892,6 +901,50 @@ function showUserProfile(username) {
         }
       };
       reader.readAsDataURL(file);
+    };
+  }
+
+  if (canModerateTarget) {
+    document.getElementById('profileMuteBtn').onclick = async () => {
+      try {
+        await request(API.moderation, {
+          method: 'POST',
+          body: JSON.stringify({
+            serverId: currentServerId,
+            targetUser: username,
+            action: isMuted ? 'unmute' : 'mute',
+            reason: 'Profil karti uzerinden moderasyon',
+            actor: currentUser
+          })
+        });
+        hideModal();
+        showToast(`${username} icin ${isMuted ? 'unmute' : 'mute'} uygulandi.`);
+      } catch (error) {
+        alert(error.message);
+      }
+    };
+
+    document.getElementById('profileBanBtn').onclick = async () => {
+      const confirmed = confirm(`${username} kullanicisini banlamak istiyor musun?`);
+      if (!confirmed) {
+        return;
+      }
+      try {
+        await request(API.moderation, {
+          method: 'POST',
+          body: JSON.stringify({
+            serverId: currentServerId,
+            targetUser: username,
+            action: 'ban',
+            reason: 'Profil karti uzerinden moderasyon',
+            actor: currentUser
+          })
+        });
+        hideModal();
+        showToast(`${username} banlandi.`);
+      } catch (error) {
+        alert(error.message);
+      }
     };
   }
 }
