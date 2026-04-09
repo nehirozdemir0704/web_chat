@@ -589,6 +589,7 @@ function renderHeader() {
     ? 'Direkt mesajlasma alani'
     : (channel.kind === 'voice' ? 'Sesli oda kanali' : 'Topluluk metin kanali');
   pinnedMessageText.textContent = getPinnedMessage();
+  deleteServerBtn.style.display = server.isCreator ? 'inline-flex' : 'none';
 }
 
 function renderMessages() {

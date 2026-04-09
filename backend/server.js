@@ -52,6 +52,7 @@ function defaultState() {
       {
         id: generalServerId,
         name: 'Ostim Community',
+        creator: 'admin',
         members: [
           { username: 'admin', role: 'admin' },
           { username: 'moderator', role: 'mod' },
@@ -151,6 +152,12 @@ function normalizeState(loadedState) {
     server.pinnedMessageIds = Array.isArray(server.pinnedMessageIds) ? server.pinnedMessageIds : [];
     server.moderationLogs = Array.isArray(server.moderationLogs) ? server.moderationLogs : [];
     server.inviteCode = typeof server.inviteCode === 'string' ? server.inviteCode : inviteCode();
+    if (typeof server.creator !== 'string' || !server.creator) {
+      const adminMember = Array.isArray(server.members)
+        ? server.members.find((member) => member.role === 'admin')
+        : null;
+      server.creator = adminMember?.username || server.members?.[0]?.username || null;
+    }
     if (Array.isArray(server.members) && server.members.length && !server.members.some((member) => member.role === 'admin')) {
       server.members[0].role = 'admin';
     }
@@ -305,6 +312,8 @@ function serializeServer(server, username) {
   return {
     id: server.id,
     name: server.name,
+    creator: server.creator || null,
+    isCreator: server.creator === username,
     myRole: member?.role || null,
     members: server.members.map((serverMember) => ({
       username: serverMember.username,
@@ -673,6 +682,7 @@ app.post('/api/server', (req, res) => {
   const serverItem = {
     id: uid('srv'),
     name: name.trim(),
+    creator,
     members: [{ username: creator, role: 'admin' }],
     categories: [
       {
@@ -756,6 +766,10 @@ app.post('/api/server/delete', (req, res) => {
   const serverItem = getServer(serverId);
   if (!serverItem) {
     return res.status(404).json({ error: 'Server not found.' });
+  }
+
+  if (serverItem.creator !== actor) {
+    return res.status(403).json({ error: 'Bu sunucuyu sadece kuran kisi silebilir.' });
   }
 
   const channelIds = serverItem.categories.flatMap((category) => category.channels.map((channel) => channel.id));
