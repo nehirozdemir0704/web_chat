@@ -145,6 +145,9 @@ function normalizeState(loadedState) {
     server.polls = Array.isArray(server.polls) ? server.polls : [];
     server.pinnedMessageIds = Array.isArray(server.pinnedMessageIds) ? server.pinnedMessageIds : [];
     server.moderationLogs = Array.isArray(server.moderationLogs) ? server.moderationLogs : [];
+    if (Array.isArray(server.members) && server.members.length && !server.members.some((member) => member.role === 'admin')) {
+      server.members[0].role = 'admin';
+    }
   });
 
   Object.keys(nextState.messages).forEach((channelId) => {
@@ -775,6 +778,11 @@ app.post('/api/role', (req, res) => {
 
   if (!['admin', 'mod', 'member'].includes(role)) {
     return res.status(400).json({ error: 'Invalid role.' });
+  }
+
+  const adminCount = serverItem.members.filter((member) => member.role === 'admin').length;
+  if (targetMember.role === 'admin' && role !== 'admin' && adminCount <= 1) {
+    return res.status(400).json({ error: 'Sunucuda en az bir admin kalmali.' });
   }
 
   targetMember.role = role;
