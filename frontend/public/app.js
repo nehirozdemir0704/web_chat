@@ -47,6 +47,7 @@ const speakingMeters = new Map();
 const peerConnections = new Map();
 const remoteStreams = new Map();
 const peerDisconnectTimers = new Map();
+const peerOfferState = new Map();
 let lastCallCapabilityMessage = '';
 let pendingAttachment = null;
 
@@ -644,6 +645,7 @@ function closePeerConnection(username) {
   }
   remoteStreams.delete(username);
   stopSpeakingMonitor(username);
+  peerOfferState.delete(username);
 }
 
 function schedulePeerDisconnect(username) {
@@ -804,6 +806,9 @@ function createPeerConnection(peerUsername) {
   pc.onconnectionstatechange = () => {
     if (['connecting', 'connected', 'completed'].includes(pc.connectionState)) {
       clearPeerDisconnect(peerUsername);
+      if (['connected', 'completed'].includes(pc.connectionState)) {
+        peerOfferState.set(peerUsername, 'connected');
+      }
       return;
     }
     if (pc.connectionState === 'disconnected') {
@@ -859,6 +864,14 @@ async function ensureLocalMedia() {
 
 async function initiateOffer(peerUsername) {
   const pc = createPeerConnection(peerUsername);
+  const offerState = peerOfferState.get(peerUsername);
+  if (offerState === 'pending') {
+    return;
+  }
+  if (pc.signalingState !== 'stable') {
+    return;
+  }
+  peerOfferState.set(peerUsername, 'pending');
   const offer = await pc.createOffer();
   await pc.setLocalDescription(offer);
   ws.send(JSON.stringify({
@@ -868,6 +881,7 @@ async function initiateOffer(peerUsername) {
     channelId: currentChannelId,
     signal: { type: 'offer', sdp: offer }
   }));
+  peerOfferState.set(peerUsername, 'sent');
 }
 
 async function handleIncomingSignal(data) {
@@ -881,6 +895,7 @@ async function handleIncomingSignal(data) {
   const pc = createPeerConnection(from);
 
   if (signal.type === 'offer') {
+    peerOfferState.set(from, 'received');
     await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
@@ -896,6 +911,7 @@ async function handleIncomingSignal(data) {
 
   if (signal.type === 'answer') {
     await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+    peerOfferState.set(from, 'connected');
     return;
   }
 
@@ -1848,7 +1864,9 @@ function connectWS() {
       renderVideoPanel();
       const peers = (data.participants || []).filter((username) => username !== currentUser);
       peers.forEach((peerUsername) => {
-        if (currentUser < peerUsername && localStream) {
+        const pc = peerConnections.get(peerUsername);
+        const alreadyConnected = pc && !['closed', 'failed'].includes(pc.connectionState);
+        if (currentUser < peerUsername && localStream && !alreadyConnected) {
           initiateOffer(peerUsername).catch(() => showToast('Video baglantisi baslatilamadi.'));
         }
       });
