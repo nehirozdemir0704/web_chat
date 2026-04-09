@@ -1983,23 +1983,104 @@ function toggleCamera() {
 
 function showSearchModal() {
   const list = (appState.messages[currentChannelId] || []).slice(-20);
+  const users = appState.users.filter((user) => user.username !== currentUser);
   showModal(`
-    <h2>Kanalda Ara</h2>
-    <input id="searchInput" class="modal-input" placeholder="Kelime yaz" />
-    <div id="searchResults" class="panel-subtitle">Son 20 mesaj aranacak.</div>
+    <h2>Ara</h2>
+    <input id="searchInput" class="modal-input" placeholder="Mesaj veya kullanici adi yaz" />
+    <div class="report-card" style="margin-top:12px;">
+      <div><strong>Kullanici Arama</strong></div>
+      <div id="userSearchResults" class="panel-subtitle">Kullanici adina gore arayip arkadas ekleyebilirsin.</div>
+    </div>
+    <div class="report-card" style="margin-top:12px;">
+      <div><strong>Kanal Mesajlari</strong></div>
+      <div id="searchResults" class="panel-subtitle">Son 20 mesaj aranacak.</div>
+    </div>
   `);
 
   const input = document.getElementById('searchInput');
   const results = document.getElementById('searchResults');
+  const userResults = document.getElementById('userSearchResults');
+
+  const renderUsers = (q) => {
+    if (!q) {
+      userResults.innerHTML = 'Kullanici adina gore arayip arkadas ekleyebilirsin.';
+      return;
+    }
+
+    const matches = users.filter((user) => user.username.toLowerCase().includes(q));
+    if (!matches.length) {
+      userResults.innerHTML = 'Kullanici bulunamadi.';
+      return;
+    }
+
+    userResults.innerHTML = matches.map((user) => {
+      const friend = isFriend(user.username);
+      const blocked = isBlockedUser(user.username);
+      const blockedByTarget = Array.isArray(user.blocked) && user.blocked.includes(currentUser);
+      const disabled = blocked || blockedByTarget;
+      const label = blocked
+        ? 'Engelli'
+        : blockedByTarget
+          ? 'Engelledi'
+          : friend
+            ? 'Arkadas'
+            : 'Ekle';
+
+      return `
+        <div class="member-row" style="margin-top:8px;">
+          <div style="display:flex; gap:10px; align-items:center;">
+            ${avatarMarkup(user.username, 'member-avatar')}
+            <div>
+              <div class="member-name">${escapeHtml(user.username)}</div>
+              <div class="member-role">${escapeHtml(appState.presence[user.username]?.status || 'offline')}</div>
+            </div>
+          </div>
+          <div class="member-actions">
+            <button class="mini-action-btn search-profile-btn" data-username="${user.username}">Profil</button>
+            <button class="mini-action-btn search-add-btn" data-username="${user.username}" ${disabled || friend ? 'disabled' : ''}>${label}</button>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    userResults.querySelectorAll('.search-profile-btn').forEach((button) => {
+      button.onclick = () => showUserProfile(button.dataset.username);
+    });
+
+    userResults.querySelectorAll('.search-add-btn').forEach((button) => {
+      button.onclick = async () => {
+        try {
+          const targetUser = button.dataset.username;
+          const data = await request(API.social, {
+            method: 'POST',
+            body: JSON.stringify({
+              actor: currentUser,
+              targetUser,
+              action: 'add-friend'
+            })
+          });
+          appState.social = data.social;
+          showToast(`${targetUser} arkadas olarak eklendi.`);
+          renderUsers(q);
+        } catch (error) {
+          alert(error.message);
+        }
+      };
+    });
+  };
+
   input.oninput = () => {
     const q = input.value.trim().toLowerCase();
     const matches = list.filter((message) => message.text.toLowerCase().includes(q));
+    renderUsers(q);
     results.innerHTML = q
       ? (matches.length
           ? matches.map((message) => `<div class="report-card"><strong>${escapeHtml(message.user)}</strong><div>${escapeHtml(message.text)}</div></div>`).join('')
           : 'Mesaj bulunamadi.')
       : 'Son 20 mesaj aranacak.';
   };
+
+  renderUsers('');
 }
 
 function showPinnedInfo() {
