@@ -1529,7 +1529,7 @@ async function bootstrap() {
 function showLogin() {
   showModal(`
     <h2>Topluluk Sunucusu Giris</h2>
-    <p class="modal-copy">Demo hesaplar: admin/123, moderator/123, student/123</p>
+    <p class="modal-copy">Kullanici adi ve sifrenizi girin.</p>
     <input id="loginUser" class="modal-input" placeholder="Kullanici adi" />
     <input id="loginPass" class="modal-input" type="password" placeholder="Sifre" />
     <button id="loginSubmit" class="modal-btn primary">Giris Yap</button>
