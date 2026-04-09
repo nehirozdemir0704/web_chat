@@ -177,6 +177,22 @@ function sanitizeUser(user) {
   };
 }
 
+function buildEffectivePresence() {
+  const effectivePresence = {};
+
+  state.users.forEach((user) => {
+    const storedPresence = state.presence[user.username] || {};
+    effectivePresence[user.username] = {
+      ...storedPresence,
+      status: onlineUsers.has(user.username)
+        ? (storedPresence.status || user.status || 'online')
+        : 'offline'
+    };
+  });
+
+  return effectivePresence;
+}
+
 function getDmKey(userA, userB) {
   return [userA, userB].sort().join('__');
 }
@@ -251,6 +267,7 @@ function canAccessChannel(server, username, channelId) {
 
 function serializeServer(server, username) {
   const member = getServerMember(server, username);
+  const effectivePresence = buildEffectivePresence();
   const visibleCategories = server.categories
     .map((category) => ({
       id: category.id,
@@ -273,7 +290,7 @@ function serializeServer(server, username) {
     members: server.members.map((serverMember) => ({
       username: serverMember.username,
       role: serverMember.role,
-      status: state.presence[serverMember.username]?.status || 'offline'
+      status: effectivePresence[serverMember.username]?.status || 'offline'
     })),
     categories: visibleCategories,
     reports: server.reports,
@@ -298,6 +315,7 @@ function buildVisibleMessagesForUser(username) {
 }
 
 function buildBootstrap(username) {
+  const effectivePresence = buildEffectivePresence();
   return {
     currentUser: sanitizeUser(getUser(username)),
     users: state.users.map(sanitizeUser),
@@ -307,7 +325,7 @@ function buildBootstrap(username) {
     messages: buildVisibleMessagesForUser(username),
     directMessages: buildVisibleDms(username),
     voicePresence: state.voicePresence,
-    presence: state.presence,
+    presence: effectivePresence,
     callPresence,
     typingState
   };
@@ -358,9 +376,10 @@ function broadcast(type, payload) {
 }
 
 function broadcastState() {
+  const effectivePresence = buildEffectivePresence();
   broadcast('stateUpdated', {
     users: state.users.map(sanitizeUser),
-    presence: state.presence,
+    presence: effectivePresence,
     voicePresence: state.voicePresence,
     callPresence,
     typingState
@@ -372,6 +391,7 @@ function broadcastServer(serverId) {
   if (!serverItem) {
     return;
   }
+  const effectivePresence = buildEffectivePresence();
 
   wss.clients.forEach((client) => {
     if (client.readyState !== WebSocket.OPEN) {
@@ -394,7 +414,7 @@ function broadcastServer(serverId) {
       messages: buildVisibleMessagesForUser(info.username),
       directMessages: buildVisibleDms(info.username),
       voicePresence: state.voicePresence,
-      presence: state.presence,
+      presence: effectivePresence,
       callPresence,
       typingState
     }));
