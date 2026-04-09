@@ -735,6 +735,19 @@
       gap: 10px;
     }
 
+    .voice-member {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .voice-member.speaking {
+      background: var(--accent-soft-2);
+      border-color: var(--accent);
+      box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.03) inset;
+    }
+
     .modal-overlay {
       position: fixed;
       inset: 0;
@@ -1399,6 +1412,11 @@
       border-radius: 10px;
       overflow: hidden;
       border: 1px solid var(--line);
+    }
+
+    .video-card.speaking {
+      border-color: var(--accent);
+      box-shadow: 0 0 0 2px rgba(255, 99, 184, 0.18);
     }
 
     .video-card video {

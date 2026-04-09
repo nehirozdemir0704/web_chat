@@ -41,6 +41,9 @@ let localStream = null;
 let audioContext = null;
 let notificationsEnabled = false;
 let notificationCenter = [];
+let speakingAnimationFrame = null;
+const speakingUsers = new Set();
+const speakingMeters = new Map();
 const peerConnections = new Map();
 const remoteStreams = new Map();
 let lastCallCapabilityMessage = '';
@@ -144,6 +147,89 @@ function loadNotificationCenter() {
 
 function saveNotificationCenter() {
   localStorage.setItem(notificationStorageKey(), JSON.stringify(notificationCenter.slice(0, 40)));
+}
+
+function isUserSpeaking(username) {
+  return speakingUsers.has(username);
+}
+
+function ensureAudioContext() {
+  audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
+  if (audioContext.state === 'suspended') {
+    audioContext.resume();
+  }
+  return audioContext;
+}
+
+function stopSpeakingMonitor(username) {
+  const meter = speakingMeters.get(username);
+  if (!meter) {
+    return;
+  }
+  try {
+    meter.source.disconnect();
+    meter.analyser.disconnect();
+  } catch {
+    // ignore disconnect issues
+  }
+  speakingMeters.delete(username);
+  if (speakingUsers.delete(username)) {
+    renderVoicePanel();
+    renderVideoPanel();
+  }
+}
+
+function runSpeakingLoop() {
+  if (!speakingMeters.size) {
+    speakingAnimationFrame = null;
+    return;
+  }
+
+  let changed = false;
+  speakingMeters.forEach((meter, username) => {
+    meter.analyser.getByteFrequencyData(meter.data);
+    const average = meter.data.reduce((sum, value) => sum + value, 0) / meter.data.length;
+    const speaking = average > 18;
+    if (speaking && !speakingUsers.has(username)) {
+      speakingUsers.add(username);
+      changed = true;
+    } else if (!speaking && speakingUsers.has(username)) {
+      speakingUsers.delete(username);
+      changed = true;
+    }
+  });
+
+  if (changed) {
+    renderVoicePanel();
+    renderVideoPanel();
+  }
+
+  speakingAnimationFrame = requestAnimationFrame(runSpeakingLoop);
+}
+
+function startSpeakingMonitor(stream, username) {
+  if (!stream?.getAudioTracks().length) {
+    return;
+  }
+  stopSpeakingMonitor(username);
+  try {
+    const ctx = ensureAudioContext();
+    const analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    analyser.smoothingTimeConstant = 0.72;
+    const source = ctx.createMediaStreamSource(stream);
+    source.connect(analyser);
+    speakingMeters.set(username, {
+      analyser,
+      source,
+      data: new Uint8Array(analyser.frequencyBinCount)
+    });
+    if (!speakingAnimationFrame) {
+      speakingAnimationFrame = requestAnimationFrame(runSpeakingLoop);
+    }
+  } catch {
+    // ignore analyser issues in unsupported browsers
+  }
 }
 
 function renderNotificationBadge() {
@@ -380,21 +466,18 @@ function showBrowserNotification(title, body) {
 
 function playNotificationSound() {
   try {
-    audioContext = audioContext || new (window.AudioContext || window.webkitAudioContext)();
-    if (audioContext.state === 'suspended') {
-      audioContext.resume();
-    }
+    const ctx = ensureAudioContext();
     const oscillator = audioContext.createOscillator();
     const gain = audioContext.createGain();
     oscillator.type = 'triangle';
     oscillator.frequency.value = 740;
-    gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.04, audioContext.currentTime + 0.01);
-    gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + 0.16);
+    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.04, ctx.currentTime + 0.01);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.16);
     oscillator.connect(gain);
-    gain.connect(audioContext.destination);
+    gain.connect(ctx.destination);
     oscillator.start();
-    oscillator.stop(audioContext.currentTime + 0.18);
+    oscillator.stop(ctx.currentTime + 0.18);
   } catch {
     // Browser may block audio until user interaction.
   }
@@ -509,11 +592,13 @@ function closePeerConnection(username) {
     peerConnections.delete(username);
   }
   remoteStreams.delete(username);
+  stopSpeakingMonitor(username);
 }
 
 function cleanupCallUi() {
   remoteStreams.clear();
   [...peerConnections.keys()].forEach(closePeerConnection);
+  [...speakingMeters.keys()].forEach(stopSpeakingMonitor);
   micEnabled = true;
   cameraEnabled = true;
   lastCallCapabilityMessage = '';
@@ -541,18 +626,18 @@ function renderVideoPanel() {
   const cards = [];
   if (localStream) {
     cards.push(`
-      <div class="video-card">
+      <div class="video-card ${isUserSpeaking(currentUser) ? 'speaking' : ''}">
         <video id="localVideo" autoplay muted playsinline></video>
-        <div class="video-label">Sen</div>
+        <div class="video-label">Sen ${isUserSpeaking(currentUser) ? '• konusuyor' : ''}</div>
       </div>
     `);
   }
 
   for (const [username] of remoteStreams.entries()) {
     cards.push(`
-      <div class="video-card">
+      <div class="video-card ${isUserSpeaking(username) ? 'speaking' : ''}">
         <video id="remoteVideo_${username}" autoplay playsinline></video>
-        <div class="video-label">${escapeHtml(username)}</div>
+        <div class="video-label">${escapeHtml(username)} ${isUserSpeaking(username) ? '• konusuyor' : ''}</div>
       </div>
     `);
   }
@@ -611,6 +696,7 @@ function createPeerConnection(peerUsername) {
 
   pc.ontrack = (event) => {
     remoteStreams.set(peerUsername, event.streams[0]);
+    startSpeakingMonitor(event.streams[0], peerUsername);
     renderVideoPanel();
   };
 
@@ -651,6 +737,7 @@ async function ensureLocalMedia() {
       micEnabled = Boolean(localStream.getAudioTracks().length);
       cameraEnabled = Boolean(localStream.getVideoTracks().length);
       lastCallCapabilityMessage = attempt.label;
+      startSpeakingMonitor(localStream, currentUser);
       renderVideoPanel();
       return localStream;
     } catch (error) {
@@ -1281,7 +1368,9 @@ function renderVoicePanel() {
     <div class="voice-subtitle">Katil/ayril simulasyonu ve anlik durum</div>
     <div class="voice-members">
       ${(list.length ? list : ['Kimse odada degil.'])
-        .map((username) => `<div class="voice-member">${username}</div>`)
+        .map((username) => typeof username === 'string'
+          ? `<div class="voice-member ${isUserSpeaking(username) ? 'speaking' : ''}"><span>${username}</span><span>${isUserSpeaking(username) ? 'konusuyor' : 'sessiz'}</span></div>`
+          : `<div class="voice-member">${username}</div>`)
         .join('')}
     </div>
   `;
@@ -2206,6 +2295,7 @@ function stopLocalMedia() {
     localStream.getTracks().forEach((track) => track.stop());
     localStream = null;
   }
+  stopSpeakingMonitor(currentUser);
 }
 
 function endVideoCall() {
