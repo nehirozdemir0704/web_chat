@@ -40,6 +40,7 @@ let typingTimer = null;
 let localStream = null;
 let audioContext = null;
 let notificationsEnabled = false;
+let notificationCenter = [];
 const peerConnections = new Map();
 const remoteStreams = new Map();
 let lastCallCapabilityMessage = '';
@@ -80,6 +81,8 @@ const helperText = document.getElementById('helperText');
 const permissionsList = document.getElementById('permissionsList');
 const themeToggleBtn = document.getElementById('themeToggleBtn');
 const searchBtn = document.getElementById('searchBtn');
+const notificationCenterBtn = document.getElementById('notificationCenterBtn');
+const notificationBadge = document.getElementById('notificationBadge');
 const pinBtn = document.getElementById('pinBtn');
 const videoBtn = document.getElementById('videoBtn');
 const membersToggleBtn = document.getElementById('membersToggleBtn');
@@ -122,6 +125,91 @@ function request(url, options = {}) {
     }
     return data;
   });
+}
+
+function notificationStorageKey() {
+  return `community-notifications:${currentUser || 'guest'}`;
+}
+
+function loadNotificationCenter() {
+  try {
+    notificationCenter = JSON.parse(localStorage.getItem(notificationStorageKey()) || '[]');
+    if (!Array.isArray(notificationCenter)) {
+      notificationCenter = [];
+    }
+  } catch {
+    notificationCenter = [];
+  }
+}
+
+function saveNotificationCenter() {
+  localStorage.setItem(notificationStorageKey(), JSON.stringify(notificationCenter.slice(0, 40)));
+}
+
+function renderNotificationBadge() {
+  if (!notificationBadge) {
+    return;
+  }
+  const unread = notificationCenter.filter((item) => !item.read).length;
+  notificationBadge.textContent = String(unread);
+  notificationBadge.classList.toggle('hidden', unread === 0);
+}
+
+function addNotification(type, title, text) {
+  notificationCenter.unshift({
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    type,
+    title,
+    text,
+    time: Date.now(),
+    read: false
+  });
+  notificationCenter = notificationCenter.slice(0, 40);
+  saveNotificationCenter();
+  renderNotificationBadge();
+}
+
+function markNotificationsRead() {
+  notificationCenter = notificationCenter.map((item) => ({ ...item, read: true }));
+  saveNotificationCenter();
+  renderNotificationBadge();
+}
+
+function showNotificationCenter() {
+  const items = notificationCenter.length
+    ? notificationCenter.map((item) => `
+        <div class="notification-card ${item.read ? '' : 'unread'}">
+          <div class="notification-card-head">
+            <div class="notification-title">${escapeHtml(item.title)}</div>
+            <div class="notification-time">${formatTime(item.time)}</div>
+          </div>
+          <div class="notification-type">${escapeHtml(item.type)}</div>
+          <div class="panel-subtitle">${escapeHtml(item.text)}</div>
+        </div>
+      `).join('')
+    : '<div class="empty-state">Henuz bildirim yok.</div>';
+
+  showModal(`
+    <h2>Bildirim Merkezi</h2>
+    <div class="action-grid">
+      <button id="markNotificationsReadBtn" class="modal-btn secondary">Tumunu Okundu Yap</button>
+      <button id="clearNotificationsBtn" class="modal-btn secondary">Temizle</button>
+    </div>
+    <div class="notification-list">${items}</div>
+  `);
+
+  document.getElementById('markNotificationsReadBtn').onclick = () => {
+    markNotificationsRead();
+    showNotificationCenter();
+  };
+  document.getElementById('clearNotificationsBtn').onclick = () => {
+    notificationCenter = [];
+    saveNotificationCenter();
+    renderNotificationBadge();
+    showNotificationCenter();
+  };
+
+  markNotificationsRead();
 }
 
 function resizeImageFile(file, maxSize = 320, quality = 0.82) {
@@ -1239,6 +1327,23 @@ function renderReports() {
   `;
 }
 
+function collectModerationNotifications(nextServers) {
+  nextServers.forEach((server) => {
+    const previousServer = appState.servers.find((item) => item.id === server.id);
+    const previousKeys = new Set((previousServer?.moderationLogs || []).map((log) => `${log.time}_${log.action}_${log.targetUser}_${log.actor}`));
+    (server.moderationLogs || []).forEach((log) => {
+      const key = `${log.time}_${log.action}_${log.targetUser}_${log.actor}`;
+      if (!previousKeys.has(key)) {
+        addNotification(
+          'moderasyon',
+          `${server.name} sunucusunda moderasyon`,
+          `${log.actor || 'Sistem'} • ${log.action} • ${log.targetUser || '-'}`
+        );
+      }
+    });
+  });
+}
+
 function renderPolls() {
   const server = getCurrentServer();
   pollList.innerHTML = '';
@@ -1291,6 +1396,7 @@ function renderPermissions() {
 
 function renderAll() {
   syncSocialState(appState.social);
+  renderNotificationBadge();
   renderServers();
   renderChannels();
   renderHeader();
@@ -1412,6 +1518,7 @@ function connectWS() {
           playNotificationSound();
           showToast(`${data.peerUsername} sana ozel mesaj gonderdi.`);
           const latestMessage = data.messages[data.messages.length - 1];
+          addNotification('ozel mesaj', `${data.peerUsername} sana yazdi`, latestMessage?.text || 'Yeni ozel mesaj');
           showBrowserNotification(`${data.peerUsername} sana ozel mesaj gonderdi`, latestMessage?.text || 'Yeni mesaj');
         }
       }
@@ -1428,6 +1535,11 @@ function connectWS() {
       const isMention = message.user !== currentUser && messageMentionsUser(message.text, currentUser);
       if (message.user !== currentUser) {
         playNotificationSound();
+        addNotification(
+          isMention ? 'bahsetme' : 'mesaj',
+          isMention ? `${message.user} senden bahsetti` : `${message.user} yeni mesaj gonderdi`,
+          message.text || 'Yeni kanal mesaji'
+        );
         showBrowserNotification(
           isMention ? `${message.user} senden bahsetti` : `${message.user} yeni mesaj`,
           message.text || 'Yeni kanal mesaji'
@@ -1478,6 +1590,7 @@ function connectWS() {
       if (mySocial().incomingRequests.length > previousIncoming) {
         playNotificationSound();
         showToast('Yeni bir arkadaslik istegi geldi.');
+        addNotification('arkadaslik', 'Yeni arkadaslik istegi', 'Istekler panelinden kabul edebilirsin.');
         showBrowserNotification('Yeni arkadaslik istegi', 'Istekler panelinden kabul edebilirsin.');
       }
       currentVoiceChannelId = appState.presence[currentUser]?.voiceChannelId || null;
@@ -1491,6 +1604,7 @@ function connectWS() {
     }
 
     if (data.type === 'serverUpdated') {
+      collectModerationNotifications([data.server]);
       const index = appState.servers.findIndex((server) => server.id === data.server.id);
       if (index >= 0) {
         appState.servers[index] = data.server;
@@ -1564,6 +1678,7 @@ function connectWS() {
 async function bootstrap() {
   const data = await request(`${API.bootstrap}?username=${encodeURIComponent(currentUser)}`);
   appState = data;
+  loadNotificationCenter();
   syncSocialState(appState.social);
   unreadDmCounts = {};
   currentServerId = appState.servers[0]?.id || null;
@@ -1796,8 +1911,10 @@ async function showInviteCode() {
       try {
         await navigator.clipboard.writeText(data.inviteCode);
         showToast('Davet kodu kopyalandi.');
+        addNotification('davet', 'Davet kodu kopyalandi', `${getCurrentServer()?.name || 'Sunucu'} icin kod paylasima hazir.`);
       } catch {
         showToast(`Davet kodu: ${data.inviteCode}`);
+        addNotification('davet', 'Davet kodu olusturuldu', `${data.inviteCode} kodunu paylasabilirsin.`);
       }
     };
   } catch (error) {
@@ -1831,6 +1948,7 @@ function joinServerByCode() {
       }
       hideModal();
       switchServer(data.server.id);
+      addNotification('davet', 'Sunucuya katildin', `${data.server.name} sunucusuna davet koduyla girdin.`);
       showToast(`${data.server.name} sunucusuna katildin.`);
     } catch (error) {
       alert(error.message);
@@ -2450,6 +2568,7 @@ window.onload = () => {
   toggleCameraBtn.onclick = toggleCamera;
   videoBtn.onclick = startVideoCall;
   searchBtn.onclick = showSearchModal;
+  notificationCenterBtn.onclick = showNotificationCenter;
   pinBtn.onclick = showPinnedInfo;
   membersToggleBtn.onclick = toggleMembersPanel;
   membersTabBtn.onclick = () => {

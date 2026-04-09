@@ -1175,6 +1175,79 @@
       align-items: center;
     }
 
+    .notification-trigger {
+      position: relative;
+    }
+
+    .notification-badge {
+      position: absolute;
+      top: -4px;
+      right: -4px;
+      min-width: 18px;
+      height: 18px;
+      border-radius: 999px;
+      padding: 0 5px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      background: var(--danger);
+      color: #fff;
+      font-size: 10px;
+      font-weight: 800;
+      border: 2px solid var(--panel);
+    }
+
+    .notification-list {
+      display: grid;
+      gap: 10px;
+      max-height: 56vh;
+      overflow: auto;
+      padding-right: 4px;
+    }
+
+    .notification-card {
+      display: grid;
+      gap: 6px;
+      padding: 12px 14px;
+      border-radius: 14px;
+      background: var(--soft-surface);
+      border: 1px solid var(--line);
+    }
+
+    .notification-card.unread {
+      background: var(--soft-surface-2);
+      box-shadow: inset 3px 0 0 var(--accent);
+    }
+
+    .notification-card-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 12px;
+      align-items: center;
+    }
+
+    .notification-title {
+      font-weight: 700;
+      color: var(--text);
+    }
+
+    .notification-time {
+      color: var(--muted);
+      font-size: 11px;
+      white-space: nowrap;
+    }
+
+    .notification-type {
+      display: inline-flex;
+      width: fit-content;
+      border-radius: 999px;
+      padding: 4px 9px;
+      background: var(--accent-soft);
+      color: var(--accent-soft-text);
+      font-size: 11px;
+      font-weight: 700;
+    }
+
     .icon-action {
       border: 0;
       background: var(--soft-surface);
@@ -1491,6 +1564,10 @@
             <option value="busy">mesgul</option>
           </select>
           <div class="top-actions">
+            <div class="notification-trigger">
+              <button id="notificationCenterBtn" class="icon-action" title="Bildirim Merkezi">🔔</button>
+              <span id="notificationBadge" class="notification-badge hidden">0</span>
+            </div>
             <button id="searchBtn" class="icon-action" title="Ara">🔎</button>
             <button id="pinBtn" class="icon-action" title="Bilgi">📌</button>
             <button id="videoBtn" class="icon-action" title="Goruntulu Konusma">🎥</button>
