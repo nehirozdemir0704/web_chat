@@ -43,9 +43,9 @@ function defaultState() {
 
   return {
     users: [
-      { username: 'admin', password: '123', banned: false, mutedUntil: null, status: 'online' },
-      { username: 'moderator', password: '123', banned: false, mutedUntil: null, status: 'away' },
-      { username: 'student', password: '123', banned: false, mutedUntil: null, status: 'online' }
+      { username: 'admin', password: '123', banned: false, mutedUntil: null, status: 'online', friends: [], blocked: [] },
+      { username: 'moderator', password: '123', banned: false, mutedUntil: null, status: 'away', friends: [], blocked: [] },
+      { username: 'student', password: '123', banned: false, mutedUntil: null, status: 'online', friends: [], blocked: [] }
     ],
     directMessages: {},
     servers: [
@@ -136,6 +136,8 @@ function normalizeState(loadedState) {
   nextState.presence = nextState.presence && typeof nextState.presence === 'object' ? nextState.presence : {};
 
   nextState.users.forEach((user) => {
+    user.friends = Array.isArray(user.friends) ? [...new Set(user.friends)] : [];
+    user.blocked = Array.isArray(user.blocked) ? [...new Set(user.blocked)] : [];
     if (!nextState.presence[user.username]) {
       nextState.presence[user.username] = {
         status: user.status || 'offline',
@@ -197,6 +199,8 @@ function sanitizeUser(user) {
     banned: Boolean(user.banned),
     mutedUntil: user.mutedUntil,
     avatar: user.avatar || null,
+    friends: Array.isArray(user.friends) ? user.friends : [],
+    blocked: Array.isArray(user.blocked) ? user.blocked : [],
     status: onlineUsers.has(user.username)
       ? (state.presence[user.username]?.status || user.status || 'online')
       : 'offline'
@@ -264,6 +268,23 @@ function getServer(serverId) {
 
 function getServerMember(server, username) {
   return server.members.find((member) => member.username === username);
+}
+
+function areUsersBlocked(userA, userB) {
+  const left = getUser(userA);
+  const right = getUser(userB);
+  if (!left || !right) {
+    return false;
+  }
+  return left.blocked.includes(userB) || right.blocked.includes(userA);
+}
+
+function buildSocialState(username) {
+  const user = getUser(username);
+  return {
+    friends: Array.isArray(user?.friends) ? user.friends : [],
+    blocked: Array.isArray(user?.blocked) ? user.blocked : []
+  };
 }
 
 function getChannelById(server, channelId) {
@@ -349,6 +370,7 @@ function buildBootstrap(username) {
   const effectivePresence = buildEffectivePresence();
   return {
     currentUser: sanitizeUser(getUser(username)),
+    social: buildSocialState(username),
     users: state.users.map(sanitizeUser),
     servers: state.servers
       .filter((serverItem) => getServerMember(serverItem, username))
@@ -624,7 +646,9 @@ app.post('/api/register', (req, res) => {
     banned: false,
     mutedUntil: null,
     status: 'online',
-    avatar: avatar || null
+    avatar: avatar || null,
+    friends: [],
+    blocked: []
   };
 
   state.users.push(user);
@@ -793,6 +817,48 @@ app.post('/api/server/delete', (req, res) => {
   broadcastState();
   state.servers.forEach((item) => broadcastServer(item.id));
   res.json({ success: true });
+});
+
+app.post('/api/social', (req, res) => {
+  const { actor, targetUser, action } = req.body;
+  const actorUser = getUser(actor);
+  const target = getUser(targetUser);
+
+  if (!actorUser || !target) {
+    return res.status(404).json({ error: 'Kullanici bulunamadi.' });
+  }
+
+  if (actor === targetUser) {
+    return res.status(400).json({ error: 'Kendine bu islemi uygulayamazsin.' });
+  }
+
+  actorUser.friends = Array.isArray(actorUser.friends) ? actorUser.friends : [];
+  actorUser.blocked = Array.isArray(actorUser.blocked) ? actorUser.blocked : [];
+  target.friends = Array.isArray(target.friends) ? target.friends : [];
+  target.blocked = Array.isArray(target.blocked) ? target.blocked : [];
+
+  if (action === 'add-friend') {
+    if (areUsersBlocked(actor, targetUser)) {
+      return res.status(400).json({ error: 'Engelli kullanicilar arkadas olarak eklenemez.' });
+    }
+    actorUser.friends = [...new Set([...actorUser.friends, targetUser])];
+    target.friends = [...new Set([...target.friends, actor])];
+  } else if (action === 'remove-friend') {
+    actorUser.friends = actorUser.friends.filter((username) => username !== targetUser);
+    target.friends = target.friends.filter((username) => username !== actor);
+  } else if (action === 'block') {
+    actorUser.blocked = [...new Set([...actorUser.blocked, targetUser])];
+    actorUser.friends = actorUser.friends.filter((username) => username !== targetUser);
+    target.friends = target.friends.filter((username) => username !== actor);
+  } else if (action === 'unblock') {
+    actorUser.blocked = actorUser.blocked.filter((username) => username !== targetUser);
+  } else {
+    return res.status(400).json({ error: 'Gecersiz sosyal islem.' });
+  }
+
+  saveState();
+  broadcastState();
+  res.json({ social: buildSocialState(actor) });
 });
 
 app.post('/api/channel', (req, res) => {
@@ -1242,6 +1308,11 @@ wss.on('connection', (ws) => {
 
     if (data.type === 'dmMessage') {
       if (!getUser(data.username) || !getUser(data.peerUsername) || !data.text?.trim()) {
+        return;
+      }
+
+      if (areUsersBlocked(data.username, data.peerUsername)) {
+        ws.send(JSON.stringify({ type: 'error', message: 'Bu kullanici ile direkt mesajlasma engellendi.' }));
         return;
       }
 

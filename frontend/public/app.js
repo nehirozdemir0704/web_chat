@@ -12,7 +12,8 @@ const API = {
   moderation: '/api/moderation',
   report: '/api/report',
   presence: '/api/presence',
-  avatar: '/api/avatar'
+  avatar: '/api/avatar',
+  social: '/api/social'
 };
 
 let ws = null;
@@ -24,6 +25,7 @@ let appState = {
   voicePresence: {},
   presence: {},
   users: [],
+  social: { friends: [], blocked: [] },
   callPresence: {},
   typingState: {}
 };
@@ -144,6 +146,18 @@ function getCurrentChannel() {
 
 function getCurrentVoiceMembers() {
   return appState.voicePresence[currentVoiceChannelId] || [];
+}
+
+function mySocial() {
+  return appState.social || { friends: [], blocked: [] };
+}
+
+function isFriend(username) {
+  return mySocial().friends.includes(username);
+}
+
+function isBlockedUser(username) {
+  return mySocial().blocked.includes(username);
 }
 
 function getCurrentCallMembers() {
@@ -849,6 +863,10 @@ function showUserProfile(username) {
   const myServerRole = myRole();
   const canModerateTarget = username !== currentUser && ['admin', 'mod'].includes(myServerRole);
   const isMuted = Boolean(user?.mutedUntil && user.mutedUntil > Date.now());
+  const friend = isFriend(username);
+  const blocked = isBlockedUser(username);
+  const blockedByTarget = Array.isArray(user?.blocked) && user.blocked.includes(currentUser);
+  const dmBlocked = blocked || blockedByTarget;
 
   showModal(`
     <h2>Kullanici Profili</h2>
@@ -859,10 +877,17 @@ function showUserProfile(username) {
       <div class="report-meta">Rol: ${escapeHtml((member?.role || 'member').toUpperCase())}</div>
       <div class="report-meta">DM sayisi: ${dmCount}</div>
       <div class="report-meta">Sesli oda: ${escapeHtml(voiceChannel?.name || 'yok')}</div>
+      ${username !== currentUser ? `<div class="report-meta">Iliski: ${blocked ? 'engelli' : (blockedByTarget ? 'seni engellemis' : (friend ? 'arkadas' : 'normal'))}</div>` : ''}
     </div>
     ${username === currentUser ? `
       <input id="avatarFileInput" type="file" accept="image/*" class="modal-input" />
       <button id="saveAvatarBtn" class="modal-btn secondary">Profil Fotosu Yukle</button>
+    ` : ''}
+    ${username !== currentUser ? `
+      <div class="action-grid">
+        <button id="profileFriendBtn" class="modal-btn secondary">${friend ? 'Arkadas Sil' : 'Arkadas Ekle'}</button>
+        <button id="profileBlockBtn" class="modal-btn ${blocked ? 'secondary' : 'primary'}">${blocked ? 'Engeli Kaldir' : 'Engelle'}</button>
+      </div>
     ` : ''}
     ${canModerateTarget ? `
       <div class="action-grid">
@@ -870,13 +895,66 @@ function showUserProfile(username) {
         <button id="profileBanBtn" class="modal-btn primary">Ban</button>
       </div>
     ` : ''}
-    <button id="profileDmBtn" class="modal-btn primary">DM Ac</button>
+    <button id="profileDmBtn" class="modal-btn primary" ${dmBlocked ? 'disabled' : ''}>DM Ac</button>
   `);
 
-  document.getElementById('profileDmBtn').onclick = () => {
-    hideModal();
-    openDm(username);
-  };
+  const profileDmBtn = document.getElementById('profileDmBtn');
+  if (profileDmBtn) {
+    profileDmBtn.onclick = () => {
+      if (dmBlocked) {
+        showToast(blocked ? 'Engelledigin kullanici ile DM acamazsin.' : 'Bu kullanici seninle DM kurmaya uygun degil.');
+        return;
+      }
+      hideModal();
+      openDm(username);
+    };
+  }
+
+  if (username !== currentUser) {
+    document.getElementById('profileFriendBtn').onclick = async () => {
+      try {
+        const data = await request(API.social, {
+          method: 'POST',
+          body: JSON.stringify({
+            actor: currentUser,
+            targetUser: username,
+            action: friend ? 'remove-friend' : 'add-friend'
+          })
+        });
+        appState.social = data.social;
+        hideModal();
+        renderAll();
+        showToast(friend ? 'Arkadas silindi.' : 'Arkadas eklendi.');
+      } catch (error) {
+        alert(error.message);
+      }
+    };
+
+    document.getElementById('profileBlockBtn').onclick = async () => {
+      const action = blocked ? 'unblock' : 'block';
+      const confirmed = blocked ? true : confirm(`${username} kullanicisini engellemek istiyor musun?`);
+      if (!confirmed) {
+        return;
+      }
+
+      try {
+        const data = await request(API.social, {
+          method: 'POST',
+          body: JSON.stringify({
+            actor: currentUser,
+            targetUser: username,
+            action
+          })
+        });
+        appState.social = data.social;
+        hideModal();
+        renderAll();
+        showToast(blocked ? 'Kullanici engelden cikarildi.' : 'Kullanici engellendi.');
+      } catch (error) {
+        alert(error.message);
+      }
+    };
+  }
 
   if (username === currentUser) {
     document.getElementById('saveAvatarBtn').onclick = async () => {
