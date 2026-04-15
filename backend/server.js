@@ -322,31 +322,38 @@ function publicBaseUrl(req) {
 }
 
 async function sendPasswordResetEmail(email, resetUrl, username, resetCode) {
-  if (process.env.RESEND_API_KEY && process.env.MAIL_FROM) {
-    const response = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        from: process.env.MAIL_FROM,
-        to: email,
-        subject: 'Topluluk Sunucusu sifre sifirlama',
-        html: `
-          <p>Merhaba ${username},</p>
-          <p>Sifreni yenilemek icin asagidaki kodu kullanabilir veya baglantiya tiklayabilirsin.</p>
-          <p><strong style="font-size: 24px; letter-spacing: 4px;">${resetCode}</strong></p>
-          <p><a href="${resetUrl}">Sifremi sifirla</a></p>
-          <p>Bu kod ve baglanti 30 dakika gecerlidir.</p>
-          <p>Bu istegi sen yapmadiysan bu e-postayi yok sayabilirsin.</p>
-        `
-      })
-    });
-    return response.ok;
+  if (!process.env.RESEND_API_KEY || !process.env.MAIL_FROM) {
+    return { sent: false, reason: 'missing_config' };
   }
 
-  return false;
+  const response = await fetch('https://api.resend.com/emails', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({
+      from: process.env.MAIL_FROM,
+      to: email,
+      subject: 'Topluluk Sunucusu sifre sifirlama',
+      html: `
+        <p>Merhaba ${username},</p>
+        <p>Sifreni yenilemek icin asagidaki kodu kullanabilir veya baglantiya tiklayabilirsin.</p>
+        <p><strong style="font-size: 24px; letter-spacing: 4px;">${resetCode}</strong></p>
+        <p><a href="${resetUrl}">Sifremi sifirla</a></p>
+        <p>Bu kod ve baglanti 30 dakika gecerlidir.</p>
+        <p>Bu istegi sen yapmadiysan bu e-postayi yok sayabilirsin.</p>
+      `
+    })
+  });
+
+  if (response.ok) {
+    return { sent: true };
+  }
+
+  const details = await response.text().catch(() => '');
+  console.error('Resend rejected password reset email:', response.status, details);
+  return { sent: false, reason: 'resend_rejected', status: response.status };
 }
 
 function getDmKey(userA, userB) {
@@ -869,15 +876,21 @@ app.post('/api/password-reset/request', async (req, res) => {
   });
 
   const resetUrl = `${publicBaseUrl(req)}?resetToken=${encodeURIComponent(token)}`;
-  const mailSent = await sendPasswordResetEmail(email, resetUrl, username, resetCode).catch((error) => {
+  const mailResult = await sendPasswordResetEmail(email, resetUrl, username, resetCode).catch((error) => {
     console.error('Password reset email failed:', error.message);
-    return false;
+    return { sent: false, reason: 'network_error' };
   });
 
   saveState();
-  if (!mailSent) {
+  if (!mailResult.sent && mailResult.reason === 'missing_config') {
     return res.status(503).json({
       error: 'Mail servisi henuz ayarli degil. Render ortam degiskenlerine RESEND_API_KEY ve MAIL_FROM eklenmeli.'
+    });
+  }
+
+  if (!mailResult.sent) {
+    return res.status(503).json({
+      error: 'Resend mail gonderimini reddetti. RESEND_API_KEY dogru mu ve MAIL_FROM adresi Resend tarafinda kullanilabilir mi kontrol et.'
     });
   }
 
