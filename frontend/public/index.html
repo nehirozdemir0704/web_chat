@@ -1198,6 +1198,10 @@
         grid-template-rows: 72px minmax(0, 1fr);
       }
 
+      body {
+        overflow: hidden;
+      }
+
       .servers,
       .sidebar {
         border: 0;
@@ -1245,27 +1249,30 @@
       .channels,
       .sidebar {
         position: fixed;
-        top: 78px;
-        bottom: 10px;
-        width: min(360px, calc(100vw - 20px));
-        max-width: calc(100vw - 20px);
-        padding: 14px 12px 16px;
+        top: 76px;
+        bottom: 6px;
+        width: calc(100vw - 12px);
+        max-width: calc(100vw - 12px);
+        padding: 12px 10px calc(14px + env(safe-area-inset-bottom));
         border: 1px solid var(--line);
-        border-radius: 24px;
-        box-shadow: 0 22px 56px rgba(0, 0, 0, 0.34);
+        border-radius: 22px;
+        box-shadow: 0 22px 56px rgba(0, 0, 0, 0.42);
         z-index: 32;
         overflow: hidden;
-        display: grid;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        backdrop-filter: blur(22px);
       }
 
       .channels {
-        left: 10px;
+        left: 6px;
         transform: translateX(-112%);
         transition: transform 0.22s ease;
       }
 
       .sidebar {
-        right: 10px;
+        right: 6px;
         transform: translateX(112%);
         transition: transform 0.22s ease;
       }
@@ -1281,14 +1288,15 @@
       }
 
       .workspace-header {
-        padding: 12px 12px 10px;
-        gap: 10px;
-        align-items: flex-start;
+        padding: 10px 12px 8px;
+        gap: 8px;
+        align-items: stretch;
         flex-direction: column;
       }
 
       .workspace-header h2 {
-        font-size: 17px;
+        font-size: 18px;
+        line-height: 1.1;
       }
 
       .workspace-subtitle,
@@ -1299,12 +1307,17 @@
       .workspace-meta {
         width: 100%;
         justify-content: space-between;
+        align-items: center;
         gap: 8px;
+        flex-wrap: nowrap;
+        min-width: 0;
       }
 
       .workspace-meta select {
-        min-width: 88px;
+        min-width: 82px;
         flex: 0 0 auto;
+        padding: 8px 10px;
+        font-size: 12px;
       }
 
       .top-actions {
@@ -1314,6 +1327,7 @@
         overflow: auto;
         padding-bottom: 2px;
         min-width: 0;
+        justify-content: flex-end;
       }
 
       .top-actions .icon-action {
@@ -1332,7 +1346,7 @@
       }
 
       .message-row {
-        grid-template-columns: 28px 1fr;
+        grid-template-columns: 28px minmax(0, 1fr);
         gap: 8px;
         padding: 6px 12px;
       }
@@ -1352,8 +1366,10 @@
       }
 
       .helper-line {
-        font-size: 11px;
+        font-size: 10px;
         line-height: 1.35;
+        max-height: 28px;
+        overflow: hidden;
       }
 
       .composer-row {
@@ -1379,24 +1395,136 @@
 
       .action-grid {
         gap: 8px;
-      }
-
-      .action-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .server-info-card {
         padding: 10px;
+        border-radius: 18px;
       }
 
       .voice-actions {
         gap: 8px;
       }
 
+      .channels .brand {
+        padding: 2px 4px 10px;
+      }
+
+      .channels .brand h1 {
+        font-size: 16px;
+      }
+
+      .channels .brand p,
+      .panel-subtitle {
+        font-size: 11px;
+        line-height: 1.35;
+      }
+
+      .channels .server-info-card:first-of-type,
+      .channels .server-info-card:last-of-type {
+        flex: 0 0 auto;
+      }
+
+      .channels #channelTree {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto;
+        padding-right: 2px;
+      }
+
+      .channels .channel-group {
+        gap: 3px;
+      }
+
+      .channels .channel-group-title {
+        font-size: 11px;
+        padding: 0 6px;
+      }
+
+      .channels .channel-item {
+        padding: 8px 10px;
+        border-radius: 10px;
+        font-size: 13px;
+      }
+
+      .voice-name {
+        font-size: 14px;
+      }
+
+      .voice-subtitle,
+      .voice-member {
+        font-size: 11px;
+      }
+
+      .voice-members {
+        max-height: 96px;
+      }
+
       .member-tabs {
         position: sticky;
         top: 0;
         z-index: 1;
+        background: var(--panel);
+        padding-bottom: 4px;
+      }
+
+      .sidebar .sidebar-panel:first-child {
+        padding-bottom: 6px;
+      }
+
+      .sidebar .sidebar-panel:not(:first-child) {
+        border-radius: 18px;
+        border: 1px solid var(--line);
+        margin-bottom: 0;
+      }
+
+      .sidebar #memberList,
+      .sidebar #dmList,
+      .sidebar #reportList,
+      .sidebar #pollList,
+      .sidebar #permissionsList {
+        overflow: auto;
+        min-height: 0;
+      }
+
+      .sidebar #memberList,
+      .sidebar #dmList {
+        max-height: min(34vh, 320px);
+      }
+
+      .sidebar #reportList,
+      .sidebar #pollList,
+      .sidebar #permissionsList {
+        max-height: 18vh;
+      }
+
+      .member-row,
+      .dm-user,
+      .permission-card,
+      .report-card,
+      .poll-card {
+        padding: 9px 10px;
+      }
+
+      .member-row {
+        align-items: flex-start;
+      }
+
+      .member-actions {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+      }
+
+      .member-actions .action-btn,
+      .member-actions .tiny-action {
+        min-height: 30px;
+      }
+
+      .count-pill {
+        min-width: 22px;
+        height: 22px;
+        font-size: 10px;
       }
 
       .call-overlay {
