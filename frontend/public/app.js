@@ -76,6 +76,9 @@ const chatArea = document.getElementById('chatArea');
 const memberList = document.getElementById('memberList');
 const dmList = document.getElementById('dmList');
 const voicePanel = document.getElementById('voicePanel');
+const appShell = document.getElementById('appShell');
+const channelsPanel = document.querySelector('.channels');
+const mobileBackdrop = document.getElementById('mobileBackdrop');
 const reportList = document.getElementById('reportList');
 const pollList = document.getElementById('pollList');
 const videoPanel = document.getElementById('videoPanel');
@@ -133,6 +136,40 @@ let currentTheme = localStorage.getItem('community-theme') || 'dark';
 let micEnabled = true;
 let cameraEnabled = true;
 let lastSeenMarkers = {};
+
+function isMobileLayout() {
+  return window.matchMedia('(max-width: 860px)').matches;
+}
+
+function updateMobileBackdrop() {
+  const visible = channelsPanel.classList.contains('mobile-open') || sidebar.classList.contains('mobile-open');
+  mobileBackdrop.classList.toggle('visible', visible);
+}
+
+function closeMobilePanels() {
+  channelsPanel.classList.remove('mobile-open');
+  sidebar.classList.remove('mobile-open');
+  updateMobileBackdrop();
+}
+
+function openMobilePanel(panel) {
+  if (!isMobileLayout()) {
+    return;
+  }
+
+  const openChannels = panel === 'channels';
+  channelsPanel.classList.toggle('mobile-open', openChannels);
+  sidebar.classList.toggle('mobile-open', !openChannels);
+  updateMobileBackdrop();
+}
+
+function handleResponsiveLayout() {
+  if (isMobileLayout()) {
+    sidebar.classList.remove('hidden-panel');
+  } else {
+    closeMobilePanels();
+  }
+}
 
 function applyTheme(theme) {
   currentTheme = theme;
@@ -1845,6 +1882,9 @@ function switchServer(serverId) {
   if (firstChannel) {
     switchChannel(firstChannel.id);
   }
+  if (isMobileLayout()) {
+    closeMobilePanels();
+  }
   renderAll();
 }
 
@@ -1873,6 +1913,9 @@ function switchChannel(channelId) {
     }));
   }
   markConversationSeen();
+  if (isMobileLayout()) {
+    closeMobilePanels();
+  }
   renderAll();
 }
 
@@ -1888,6 +1931,9 @@ function openDm(username) {
     }));
   }
   markConversationSeen();
+  if (isMobileLayout()) {
+    closeMobilePanels();
+  }
   renderAll();
 }
 
@@ -3116,10 +3162,33 @@ function openQuickActions() {
 }
 
 function toggleMembersPanel() {
+  if (isMobileLayout()) {
+    const willOpen = !sidebar.classList.contains('mobile-open');
+    channelsPanel.classList.remove('mobile-open');
+    sidebar.classList.toggle('mobile-open', willOpen);
+    updateMobileBackdrop();
+    return;
+  }
+
   sidebar.classList.toggle('hidden-panel');
 }
 
 function handleNavInfo(section) {
+  if (isMobileLayout()) {
+    if (section === 'home') {
+      openMobilePanel('channels');
+      return;
+    }
+    if (section === 'chat') {
+      closeMobilePanels();
+      return;
+    }
+    if (section === 'apps') {
+      openQuickActions();
+      return;
+    }
+  }
+
   const texts = {
     home: 'Sunucu genel panelindesin.',
     chat: 'Sohbet moduna geri donuldu.',
@@ -3131,7 +3200,8 @@ function handleNavInfo(section) {
 
 window.onload = () => {
   applyTheme(currentTheme);
-  document.getElementById('appShell').classList.add('hidden');
+  handleResponsiveLayout();
+  appShell.classList.add('hidden');
   showLogin();
   document.body.addEventListener('click', () => {
     ensureNotificationsEnabled();
@@ -3184,6 +3254,7 @@ window.onload = () => {
       closeCallPanel();
     }
   };
+  mobileBackdrop.onclick = closeMobilePanels;
   createServerBtn.onclick = createServer;
   createCategoryBtn.onclick = createCategory;
   createChannelBtn.onclick = createChannel;
@@ -3252,6 +3323,7 @@ window.onload = () => {
   navChatBtn.onclick = () => handleNavInfo('chat');
   navGameBtn.onclick = () => handleNavInfo('game');
   navAppsBtn.onclick = () => handleNavInfo('apps');
+  window.addEventListener('resize', handleResponsiveLayout);
 
   presenceSelect.onchange = async () => {
     try {

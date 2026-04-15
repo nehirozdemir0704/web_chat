@@ -1195,7 +1195,7 @@
     @media (max-width: 860px) {
       .app-shell {
         grid-template-columns: 1fr;
-        grid-template-rows: auto minmax(0, 1fr);
+        grid-template-rows: 72px minmax(0, 1fr);
       }
 
       .servers,
@@ -1206,26 +1206,197 @@
       .servers {
         flex-direction: row;
         justify-content: space-between;
-        height: 64px;
+        align-items: center;
+        gap: 10px;
+        height: 72px;
+        padding: 10px 12px;
+        position: relative;
+        z-index: 24;
       }
 
       .server-stack {
         flex-direction: row;
         justify-content: flex-start;
         overflow: auto;
+        flex: 1;
+        min-width: 0;
+        gap: 10px;
+        padding: 2px 4px;
+      }
+
+      .nav-strip {
+        grid-auto-flow: column;
+        grid-auto-columns: 44px;
+        justify-items: start;
+        padding-top: 0;
+        gap: 8px;
+        overflow: auto;
+        min-width: 0;
+      }
+
+      .nav-dot,
+      .server-pill,
+      .icon-btn {
+        width: 42px;
+        height: 42px;
+        flex: 0 0 auto;
+      }
+
+      .channels,
+      .sidebar {
+        position: fixed;
+        top: 78px;
+        bottom: 10px;
+        width: min(360px, calc(100vw - 20px));
+        max-width: calc(100vw - 20px);
+        padding: 14px 12px 16px;
+        border: 1px solid var(--line);
+        border-radius: 24px;
+        box-shadow: 0 22px 56px rgba(0, 0, 0, 0.34);
+        z-index: 32;
+        overflow: hidden;
+        display: grid;
       }
 
       .channels {
-        display: none;
+        left: 10px;
+        transform: translateX(-112%);
+        transition: transform 0.22s ease;
+      }
+
+      .sidebar {
+        right: 10px;
+        transform: translateX(112%);
+        transition: transform 0.22s ease;
+      }
+
+      .channels.mobile-open,
+      .sidebar.mobile-open {
+        transform: translateX(0);
       }
 
       .workspace {
         min-height: 0;
+        border-radius: 0;
       }
 
-      .action-grid,
-      .sidebar {
+      .workspace-header {
+        padding: 12px 12px 10px;
+        gap: 10px;
+        align-items: flex-start;
+        flex-direction: column;
+      }
+
+      .workspace-header h2 {
+        font-size: 17px;
+      }
+
+      .workspace-subtitle,
+      .helper-text {
+        font-size: 12px;
+      }
+
+      .workspace-meta {
+        width: 100%;
+        justify-content: space-between;
+        gap: 8px;
+      }
+
+      .workspace-meta select {
+        min-width: 88px;
+        flex: 0 0 auto;
+      }
+
+      .top-actions {
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 8px;
+        overflow: auto;
+        padding-bottom: 2px;
+        min-width: 0;
+      }
+
+      .top-actions .icon-action {
+        flex: 0 0 auto;
+      }
+
+      .pinned-bar {
+        padding: 8px 12px;
+        overflow: auto;
+        white-space: nowrap;
+        gap: 8px;
+      }
+
+      .chat-area {
+        padding: 6px 0 10px;
+      }
+
+      .message-row {
+        grid-template-columns: 28px 1fr;
+        gap: 8px;
+        padding: 6px 12px;
+      }
+
+      .message-avatar {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+      }
+
+      .message-content {
+        min-width: 0;
+      }
+
+      .composer {
+        padding: 8px 10px calc(12px + env(safe-area-inset-bottom));
+      }
+
+      .helper-line {
+        font-size: 11px;
+        line-height: 1.35;
+      }
+
+      .composer-row {
+        grid-template-columns: auto minmax(0, 1fr) auto;
+        gap: 8px;
+      }
+
+      .composer-addon {
+        width: 36px;
+        height: 36px;
+        font-size: 16px;
+      }
+
+      .composer input {
+        padding: 10px 11px;
+        font-size: 15px;
+      }
+
+      .send-btn {
+        padding: 10px 12px;
+        font-size: 13px;
+      }
+
+      .action-grid {
+        gap: 8px;
+      }
+
+      .action-grid {
         grid-template-columns: 1fr;
+      }
+
+      .server-info-card {
+        padding: 10px;
+      }
+
+      .voice-actions {
+        gap: 8px;
+      }
+
+      .member-tabs {
+        position: sticky;
+        top: 0;
+        z-index: 1;
       }
 
       .call-overlay {
@@ -1248,6 +1419,22 @@
         align-items: stretch;
         flex-direction: column;
       }
+    }
+
+    .mobile-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(10, 8, 14, 0.58);
+      backdrop-filter: blur(4px);
+      z-index: 28;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+
+    .mobile-backdrop.visible {
+      opacity: 1;
+      pointer-events: auto;
     }
 
     .nav-strip {
@@ -2036,6 +2223,8 @@
       </section>
     </aside>
   </div>
+
+  <div id="mobileBackdrop" class="mobile-backdrop"></div>
 
   <div id="callOverlay" class="call-overlay hidden">
     <section class="call-shell">
