@@ -351,6 +351,10 @@
       min-width: 0;
     }
 
+    .mobile-quickbar {
+      display: none;
+    }
+
     .pinned-icon {
       color: #f0b232;
       font-size: 13px;
@@ -1269,12 +1273,14 @@
         left: 6px;
         transform: translateX(-112%);
         transition: transform 0.22s ease;
+        overflow-y: auto;
       }
 
       .sidebar {
         right: 6px;
         transform: translateX(112%);
         transition: transform 0.22s ease;
+        overflow-y: auto;
       }
 
       .channels.mobile-open,
@@ -1339,6 +1345,36 @@
         overflow: auto;
         white-space: nowrap;
         gap: 8px;
+      }
+
+      .mobile-quickbar {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 8px;
+        padding: 8px 12px;
+        border-bottom: 1px solid var(--line);
+        background: var(--panel);
+      }
+
+      .mobile-quick-btn {
+        border: 1px solid var(--line);
+        background: var(--soft-surface);
+        color: var(--text);
+        border-radius: 12px;
+        min-height: 40px;
+        padding: 8px 6px;
+        font-size: 11px;
+        font-weight: 700;
+        display: grid;
+        place-items: center;
+        text-align: center;
+        gap: 2px;
+      }
+
+      .mobile-quick-btn.primary {
+        background: var(--accent);
+        border-color: transparent;
+        color: white;
       }
 
       .chat-area {
@@ -1409,6 +1445,10 @@
 
       .channels .brand {
         padding: 2px 4px 10px;
+        position: sticky;
+        top: 0;
+        z-index: 2;
+        background: linear-gradient(180deg, var(--panel) 0%, rgba(0, 0, 0, 0) 100%);
       }
 
       .channels .brand h1 {
@@ -1422,8 +1462,14 @@
       }
 
       .channels .server-info-card:first-of-type,
-      .channels .server-info-card:last-of-type {
+      .channels .server-info-card:last-of-type,
+      .channels .action-grid,
+      .channels .voice-actions {
         flex: 0 0 auto;
+      }
+
+      .channels .action-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .channels #channelTree {
@@ -1461,6 +1507,18 @@
         max-height: 96px;
       }
 
+      .voice-actions {
+        position: sticky;
+        bottom: 0;
+        background: linear-gradient(180deg, rgba(0, 0, 0, 0) 0%, var(--panel) 28%);
+        padding-top: 8px;
+      }
+
+      .voice-green,
+      .voice-red {
+        min-height: 42px;
+      }
+
       .member-tabs {
         position: sticky;
         top: 0;
@@ -1490,7 +1548,7 @@
 
       .sidebar #memberList,
       .sidebar #dmList {
-        max-height: min(34vh, 320px);
+        max-height: min(42vh, 380px);
       }
 
       .sidebar #reportList,
@@ -2300,6 +2358,13 @@
         <span class="pinned-icon">📌</span>
         <span class="pinned-label">Sabit Mesaj</span>
         <span id="pinnedMessageText">Sunucu duyurulari ve onemli bilgiler burada gorunur.</span>
+      </section>
+
+      <section class="mobile-quickbar">
+        <button id="mobileMenuBtn" class="mobile-quick-btn">Menu</button>
+        <button id="mobileVoiceBtn" class="mobile-quick-btn primary">Ses Odasi</button>
+        <button id="mobileMembersBtn" class="mobile-quick-btn">Uyeler</button>
+        <button id="mobileActionsBtn" class="mobile-quick-btn">Islemler</button>
       </section>
 
       <section id="chatArea" class="chat-area"></section>

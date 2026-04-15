@@ -131,6 +131,10 @@ const membersPanelTitle = document.getElementById('membersPanelTitle');
 const membersPanelSubtitle = document.getElementById('membersPanelSubtitle');
 const membersCountPill = document.getElementById('membersCountPill');
 const attachmentInput = document.getElementById('attachmentInput');
+const mobileMenuBtn = document.getElementById('mobileMenuBtn');
+const mobileVoiceBtn = document.getElementById('mobileVoiceBtn');
+const mobileMembersBtn = document.getElementById('mobileMembersBtn');
+const mobileActionsBtn = document.getElementById('mobileActionsBtn');
 
 let currentTheme = localStorage.getItem('community-theme') || 'dark';
 let micEnabled = true;
@@ -161,6 +165,39 @@ function openMobilePanel(panel) {
   channelsPanel.classList.toggle('mobile-open', openChannels);
   sidebar.classList.toggle('mobile-open', !openChannels);
   updateMobileBackdrop();
+}
+
+function joinBestVoiceChannel() {
+  if (currentVoiceChannelId) {
+    showToast('Zaten bir sesli odadasin.');
+    return;
+  }
+
+  const currentChannel = getCurrentChannel();
+  if (currentChannel?.kind === 'voice') {
+    toggleVoice();
+    if (isMobileLayout()) {
+      closeMobilePanels();
+    }
+    return;
+  }
+
+  const server = getCurrentServer();
+  const firstVoiceChannel = server?.categories
+    .flatMap((category) => category.channels)
+    .find((channel) => channel.kind === 'voice');
+
+  if (!firstVoiceChannel) {
+    alert('Bu sunucuda sesli oda yok.');
+    return;
+  }
+
+  currentChannelId = firstVoiceChannel.id;
+  toggleVoice();
+  renderAll();
+  if (isMobileLayout()) {
+    closeMobilePanels();
+  }
 }
 
 function handleResponsiveLayout() {
@@ -2818,30 +2855,7 @@ function joinVoice() {
 }
 
 function joinVoiceFromCallPanel() {
-  if (currentVoiceChannelId) {
-    showToast('Zaten bir sesli odadasin.');
-    return;
-  }
-
-  const currentChannel = getCurrentChannel();
-  if (currentChannel?.kind === 'voice') {
-    toggleVoice();
-    return;
-  }
-
-  const server = getCurrentServer();
-  const firstVoiceChannel = server?.categories
-    .flatMap((category) => category.channels)
-    .find((channel) => channel.kind === 'voice');
-
-  if (!firstVoiceChannel) {
-    alert('Bu sunucuda sesli oda yok.');
-    return;
-  }
-
-  currentChannelId = firstVoiceChannel.id;
-  toggleVoice();
-  renderAll();
+  joinBestVoiceChannel();
 }
 
 function leaveVoice() {
@@ -3187,6 +3201,14 @@ function handleNavInfo(section) {
       openQuickActions();
       return;
     }
+    if (section === 'game') {
+      if (activeCallChannelId || currentVoiceChannelId) {
+        openCallPanel();
+      } else {
+        joinBestVoiceChannel();
+      }
+      return;
+    }
   }
 
   const texts = {
@@ -3300,6 +3322,10 @@ window.onload = () => {
     }
   };
   composerAddBtn.onclick = openQuickActions;
+  mobileMenuBtn.onclick = () => openMobilePanel('channels');
+  mobileVoiceBtn.onclick = joinBestVoiceChannel;
+  mobileMembersBtn.onclick = toggleMembersPanel;
+  mobileActionsBtn.onclick = openQuickActions;
   attachmentInput.onchange = () => {
     const file = attachmentInput.files?.[0];
     if (!file) {
