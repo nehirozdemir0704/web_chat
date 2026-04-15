@@ -78,6 +78,15 @@ const voicePanel = document.getElementById('voicePanel');
 const reportList = document.getElementById('reportList');
 const pollList = document.getElementById('pollList');
 const videoPanel = document.getElementById('videoPanel');
+const callOverlay = document.getElementById('callOverlay');
+const callTitle = document.getElementById('callTitle');
+const callSubtitle = document.getElementById('callSubtitle');
+const callStatusText = document.getElementById('callStatusText');
+const callNotesText = document.getElementById('callNotesText');
+const callParticipantList = document.getElementById('callParticipantList');
+const minimizeCallBtn = document.getElementById('minimizeCallBtn');
+const closeCallBtn = document.getElementById('closeCallBtn');
+const joinVoiceFromCallBtn = document.getElementById('joinVoiceFromCallBtn');
 const modalOverlay = document.getElementById('modalOverlay');
 const modal = document.getElementById('modal');
 const createServerBtn = document.getElementById('createServerBtn');
@@ -757,21 +766,58 @@ function cleanupCallUi() {
   renderVideoPanel();
 }
 
+function openCallPanel() {
+  callOverlay.classList.remove('hidden');
+  renderVideoPanel();
+}
+
+function closeCallPanel() {
+  callOverlay.classList.add('hidden');
+}
+
 function renderVideoPanel() {
   const participants = getCurrentCallMembers();
   const hasCall = Boolean(localStream || participants.length || remoteStreams.size);
   const hasAudioTrack = Boolean(localStream?.getAudioTracks().length);
   const hasVideoTrack = Boolean(localStream?.getVideoTracks().length);
+  const callChannel = getCurrentServer()?.categories
+    .flatMap((category) => category.channels)
+    .find((channel) => channel.id === (activeCallChannelId || currentChannelId));
+  const cameraCount = Number(Boolean(localStream?.getVideoTracks().length)) + remoteStreams.size;
+  const micCount = Number(Boolean(localStream?.getAudioTracks().length)) + participants.filter((username) => username !== currentUser).length;
+
+  callTitle.textContent = `Voice / ${callChannel?.name || 'sesli oda'}`;
+  callSubtitle.textContent = `${participants.length || Number(Boolean(localStream))} kisi | ${cameraCount} kamera | ${micCount} mikrofon`;
+  callStatusText.textContent = hasCall
+    ? `${callChannel?.name || 'Sesli oda'} kanalinda cagri acik.`
+    : 'Henuz aktif goruntulu konusma yok. Voice kanala girip buradan cagri baslat.';
+  callNotesText.textContent = lastCallCapabilityMessage || (localStream
+    ? 'Kamera baglandi. Katilimcilar baglandikca sahnede gorunur.'
+    : 'Yerel kamera henuz baglanmadi. Kamera izni verip Goruntulu Baslat dugmesine bas.');
   toggleMicBtn.textContent = hasAudioTrack ? (micEnabled ? 'Mikrofon Acik' : 'Mikrofon Kapali') : 'Mikrofon Yok';
   toggleCameraBtn.textContent = hasVideoTrack ? (cameraEnabled ? 'Kamera Acik' : 'Kamera Kapali') : 'Kamera Yok';
   toggleMicBtn.disabled = !hasAudioTrack;
   toggleCameraBtn.disabled = !hasVideoTrack;
 
+  callParticipantList.innerHTML = participants.length
+    ? participants.map((username) => `
+        <div class="call-participant">
+          ${avatarMarkup(username, 'member-avatar')}
+          <span>${escapeHtml(username)}${username === currentUser ? ' (sen)' : ''}</span>
+        </div>
+      `).join('')
+    : '<div class="empty-state">Henuz katilimci yok.</div>';
+
   if (!hasCall) {
     const secureHint = isSecureMediaContext()
       ? 'Henuz aktif gorusme yok. Ayni kanaldaki iki kullanici Baslat ile gorusmeye girebilir.'
       : 'Bu adres guvenli degil. Goruntulu konusma icin localhost veya HTTPS kullan.';
-    videoPanel.innerHTML = `<div class="empty-state">${escapeHtml(lastCallCapabilityMessage || secureHint)}</div>`;
+    videoPanel.innerHTML = `
+      <div class="call-empty">
+        <strong>Canli sahne hazir</strong>
+        <span>${escapeHtml(lastCallCapabilityMessage || secureHint)}</span>
+      </div>
+    `;
     return;
   }
 
@@ -795,14 +841,15 @@ function renderVideoPanel() {
   }
 
   if (!cards.length) {
-    cards.push('<div class="empty-state">Cagri acik. Diger katilimcilari bekliyorsun.</div>');
+    cards.push(`
+      <div class="call-empty">
+        <strong>Cagri acik</strong>
+        <span>Diger katilimcilari bekliyorsun.</span>
+      </div>
+    `);
   }
 
   videoPanel.innerHTML = `
-    <div class="panel-subtitle">Kanal: ${escapeHtml((getCurrentServer()?.categories.flatMap((category) => category.channels).find((channel) => channel.id === (activeCallChannelId || currentChannelId))?.name) || '-')}</div>
-    <div class="panel-subtitle">Katilimcilar: ${participants.join(', ') || currentUser}</div>
-    <div class="panel-subtitle">Durum: ${localStream ? 'Goruntulu konusma acik' : 'Baglanti bekleniyor'}</div>
-    ${lastCallCapabilityMessage ? `<div class="panel-subtitle">${escapeHtml(lastCallCapabilityMessage)}</div>` : ''}
     <div class="video-grid">${cards.join('')}</div>
   `;
 
@@ -2638,6 +2685,33 @@ function joinVoice() {
   }
 }
 
+function joinVoiceFromCallPanel() {
+  if (currentVoiceChannelId) {
+    showToast('Zaten bir sesli odadasin.');
+    return;
+  }
+
+  const currentChannel = getCurrentChannel();
+  if (currentChannel?.kind === 'voice') {
+    toggleVoice();
+    return;
+  }
+
+  const server = getCurrentServer();
+  const firstVoiceChannel = server?.categories
+    .flatMap((category) => category.channels)
+    .find((channel) => channel.kind === 'voice');
+
+  if (!firstVoiceChannel) {
+    alert('Bu sunucuda sesli oda yok.');
+    return;
+  }
+
+  currentChannelId = firstVoiceChannel.id;
+  toggleVoice();
+  renderAll();
+}
+
 function leaveVoice() {
   if (currentVoiceChannelId) {
     toggleVoice();
@@ -2646,25 +2720,23 @@ function leaveVoice() {
 
 async function startVideoCall() {
   const channel = getCurrentChannel();
-  if (!channel) {
-    return;
-  }
-
-  if (channel.kind !== 'voice') {
-    alert('Goruntulu konusma icin once bir sesli oda kanalina gec.');
+  const callChannelId = channel?.kind === 'voice' ? currentChannelId : currentVoiceChannelId;
+  if (!callChannelId) {
+    alert('Goruntulu konusma icin once bir sesli odaya katil.');
     return;
   }
 
   try {
     await ensureLocalMedia();
-    activeCallChannelId = currentChannelId;
+    activeCallChannelId = callChannelId;
     ws.send(JSON.stringify({
       type: 'joinCall',
       username: currentUser,
       serverId: currentServerId,
-      channelId: currentChannelId
+      channelId: callChannelId
     }));
     showToast('Goruntulu konusma baslatildi.');
+    openCallPanel();
     renderVideoPanel();
   } catch (error) {
     const message = error instanceof Error ? error.message : explainMediaError(error);
@@ -2695,6 +2767,7 @@ function endVideoCall() {
   stopLocalMedia();
   activeCallChannelId = null;
   cleanupCallUi();
+  closeCallPanel();
   showToast('Goruntulu konusma sonlandirildi.');
 }
 
@@ -3020,6 +3093,11 @@ window.onload = () => {
       hideModal();
     }
   };
+  callOverlay.onclick = (event) => {
+    if (event.target === callOverlay) {
+      closeCallPanel();
+    }
+  };
   createServerBtn.onclick = createServer;
   createCategoryBtn.onclick = createCategory;
   createChannelBtn.onclick = createChannel;
@@ -3040,7 +3118,10 @@ window.onload = () => {
   endVideoBtn.onclick = endVideoCall;
   toggleMicBtn.onclick = toggleMic;
   toggleCameraBtn.onclick = toggleCamera;
-  videoBtn.onclick = startVideoCall;
+  videoBtn.onclick = openCallPanel;
+  minimizeCallBtn.onclick = closeCallPanel;
+  closeCallBtn.onclick = closeCallPanel;
+  joinVoiceFromCallBtn.onclick = joinVoiceFromCallPanel;
   searchBtn.onclick = showSearchModal;
   notificationCenterBtn.onclick = showNotificationCenter;
   pinBtn.onclick = showPinnedInfo;

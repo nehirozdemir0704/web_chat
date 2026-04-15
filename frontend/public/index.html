@@ -1193,6 +1193,27 @@
       .sidebar {
         grid-template-columns: 1fr;
       }
+
+      .call-overlay {
+        padding: 8px;
+      }
+
+      .call-shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(0, 1fr) auto;
+        padding: 12px;
+      }
+
+      .call-side {
+        max-height: 28vh;
+        overflow: auto;
+      }
+
+      .call-header,
+      .call-controls {
+        align-items: stretch;
+        flex-direction: column;
+      }
     }
 
     .nav-strip {
@@ -1518,6 +1539,203 @@
       scrollbar-width: thin;
     }
 
+    .call-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      padding: 18px;
+      background: rgba(8, 9, 14, 0.76);
+      backdrop-filter: blur(10px);
+    }
+
+    .call-shell {
+      height: 100%;
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 280px;
+      gap: 18px;
+      padding: 18px;
+      background:
+        radial-gradient(circle at 38% 22%, rgba(88, 101, 242, 0.16), transparent 34%),
+        linear-gradient(180deg, #11131c, #090b11);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      box-shadow: 0 28px 80px rgba(0, 0, 0, 0.45);
+      overflow: hidden;
+    }
+
+    .call-main {
+      min-width: 0;
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto minmax(0, 1fr) auto;
+      gap: 14px;
+    }
+
+    .call-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+
+    .call-kicker {
+      color: #aab0c4;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .call-header h2 {
+      margin: 4px 0 4px;
+      font-size: 28px;
+      color: #ffffff;
+    }
+
+    .call-header p,
+    .call-info-card p {
+      margin: 0;
+      color: #b8becf;
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .call-header-actions,
+    .call-controls {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .call-soft-btn,
+    .call-primary-btn {
+      border: 0;
+      border-radius: 999px;
+      padding: 10px 16px;
+      cursor: pointer;
+      color: white;
+      font-weight: 800;
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .call-primary-btn {
+      background: linear-gradient(135deg, #5865f2, #7684ff);
+      box-shadow: 0 12px 28px rgba(88, 101, 242, 0.28);
+    }
+
+    .call-stage {
+      max-height: none;
+      min-height: 0;
+      align-content: stretch;
+      padding: 14px;
+      border-radius: 20px;
+      background:
+        radial-gradient(circle at 50% 45%, rgba(88, 101, 242, 0.2), transparent 34%),
+        linear-gradient(145deg, rgba(28, 31, 64, 0.94), rgba(13, 15, 28, 0.98));
+      border: 1px solid rgba(255, 255, 255, 0.07);
+      overflow: auto;
+    }
+
+    .call-stage .video-grid {
+      height: 100%;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      align-items: stretch;
+    }
+
+    .call-stage .video-card {
+      min-height: 240px;
+      background: rgba(0, 0, 0, 0.28);
+      border-radius: 18px;
+    }
+
+    .call-stage .video-card video {
+      height: 100%;
+      min-height: 240px;
+    }
+
+    .call-empty {
+      height: 100%;
+      min-height: 320px;
+      display: grid;
+      place-content: center;
+      gap: 12px;
+      text-align: center;
+      color: #b8becf;
+    }
+
+    .call-empty strong {
+      color: #fff;
+      font-size: 24px;
+    }
+
+    .call-controls {
+      align-items: center;
+    }
+
+    .call-side {
+      min-height: 0;
+      display: grid;
+      grid-template-rows: auto auto minmax(0, 1fr);
+      gap: 14px;
+    }
+
+    .call-info-card {
+      border-radius: 18px;
+      padding: 16px;
+      background: rgba(255, 255, 255, 0.08);
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      color: #fff;
+    }
+
+    .call-info-card h3 {
+      margin: 0 0 10px;
+      font-size: 14px;
+    }
+
+    .call-participants-card {
+      min-height: 0;
+      overflow: auto;
+    }
+
+    .call-participant-list {
+      display: grid;
+      gap: 8px;
+    }
+
+    .call-participant {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 9px;
+      border-radius: 12px;
+      background: rgba(0, 0, 0, 0.18);
+      color: #e8ebff;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    @media (max-width: 860px) {
+      .call-overlay {
+        padding: 8px;
+      }
+
+      .call-shell {
+        grid-template-columns: 1fr;
+        grid-template-rows: minmax(0, 1fr) auto;
+        padding: 12px;
+      }
+
+      .call-side {
+        max-height: 28vh;
+        overflow: auto;
+      }
+
+      .call-header,
+      .call-controls {
+        align-items: stretch;
+        flex-direction: column;
+      }
+    }
+
     .video-grid {
       display: grid;
       gap: 10px;
@@ -1738,22 +1956,6 @@
       </section>
 
       <section class="sidebar-panel">
-        <div class="panel-title">Goruntulu Konusma</div>
-        <div class="panel-subtitle">Ayni kanaldaki kullanicilarla goruntulu gorusme</div>
-        <div class="video-actions">
-          <button id="startVideoBtn" class="voice-green">Baslat</button>
-          <button id="endVideoBtn" class="voice-red">Bitir</button>
-        </div>
-        <div class="video-actions secondary">
-          <button id="toggleMicBtn" class="action-btn">Mikrofon</button>
-          <button id="toggleCameraBtn" class="action-btn">Kamera</button>
-        </div>
-        <div id="videoPanel" class="video-panel">
-          <div class="empty-state">Henuz aktif gorusme yok.</div>
-        </div>
-      </section>
-
-      <section class="sidebar-panel">
         <div class="sidebar-heading">
           <div class="sidebar-heading-meta">
             <div id="membersPanelTitle" class="panel-title">Cevrimici</div>
@@ -1781,6 +1983,56 @@
         <div id="permissionsList"></div>
       </section>
     </aside>
+  </div>
+
+  <div id="callOverlay" class="call-overlay hidden">
+    <section class="call-shell">
+      <main class="call-main">
+        <header class="call-header">
+          <div>
+            <div class="call-kicker">Discord tarzi cagri</div>
+            <h2 id="callTitle">Voice / voice-lounge</h2>
+            <p id="callSubtitle">0 kisi | 0 kamera | 0 mikrofon</p>
+          </div>
+          <div class="call-header-actions">
+            <button id="minimizeCallBtn" class="call-soft-btn">Arka Plana Al</button>
+            <button id="closeCallBtn" class="call-soft-btn">Kapat</button>
+          </div>
+        </header>
+
+        <div id="videoPanel" class="video-panel call-stage">
+          <div class="call-empty">
+            <strong>Canli sahne hazir</strong>
+            <span>Sesli odaya katilip Goruntulu Baslat dugmesine bastiginda cagri galerisi burada acilir.</span>
+          </div>
+        </div>
+
+        <footer class="call-controls">
+          <button id="joinVoiceFromCallBtn" class="voice-green">Voice Katil</button>
+          <button id="startVideoBtn" class="call-primary-btn">Goruntulu Baslat</button>
+          <button id="toggleMicBtn" class="call-soft-btn">Mikrofon Yok</button>
+          <button id="toggleCameraBtn" class="call-primary-btn">Kamerayi Ac</button>
+          <button id="endVideoBtn" class="voice-red">Cagriyi Bitir</button>
+        </footer>
+      </main>
+
+      <aside class="call-side">
+        <section class="call-info-card">
+          <h3>Cagri Durumu</h3>
+          <p id="callStatusText">Henuz aktif goruntulu konusma yok.</p>
+        </section>
+        <section class="call-info-card">
+          <h3>Baglanti Notlari</h3>
+          <p id="callNotesText">Kamera ve mikrofon izinlerini verdikten sonra goruntu burada gorunur.</p>
+        </section>
+        <section class="call-info-card call-participants-card">
+          <h3>Katilimcilar</h3>
+          <div id="callParticipantList" class="call-participant-list">
+            <div class="empty-state">Henuz katilimci yok.</div>
+          </div>
+        </section>
+      </aside>
+    </section>
   </div>
 
   <div id="modalOverlay" class="modal-overlay hidden">
