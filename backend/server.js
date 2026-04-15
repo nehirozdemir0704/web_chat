@@ -712,6 +712,23 @@ app.get('/healthz', (req, res) => {
   });
 });
 
+app.get('/api/rtc-config', (req, res) => {
+  const iceServers = [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ];
+
+  if (process.env.TURN_URL && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
+    iceServers.push({
+      urls: process.env.TURN_URL,
+      username: process.env.TURN_USERNAME,
+      credential: process.env.TURN_CREDENTIAL
+    });
+  }
+
+  res.json({ iceServers });
+});
+
 app.post('/api/register', (req, res) => {
   const username = req.body.username?.trim();
   const password = req.body.password;
@@ -1361,6 +1378,16 @@ wss.on('connection', (ws) => {
     if (data.type === 'webrtcSignal') {
       const targetClient = getWsByUsername(data.target);
       if (!targetClient) {
+        return;
+      }
+      const sourceInfo = wsClients.get(ws);
+      const targetInfo = wsClients.get(targetClient);
+      if (
+        data.channelId &&
+        sourceInfo?.currentCallChannelId &&
+        targetInfo?.currentCallChannelId &&
+        (sourceInfo.currentCallChannelId !== data.channelId || targetInfo.currentCallChannelId !== data.channelId)
+      ) {
         return;
       }
 

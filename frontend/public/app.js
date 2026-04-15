@@ -13,7 +13,8 @@ const API = {
   report: '/api/report',
   presence: '/api/presence',
   avatar: '/api/avatar',
-  social: '/api/social'
+  social: '/api/social',
+  rtcConfig: '/api/rtc-config'
 };
 
 let ws = null;
@@ -27,7 +28,11 @@ let appState = {
   users: [],
   social: { friends: [], blocked: [], incomingRequests: [], outgoingRequests: [] },
   callPresence: {},
-  typingState: {}
+  typingState: {},
+  rtcIceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' }
+  ]
 };
 let currentServerId = null;
 let currentChannelId = null;
@@ -48,6 +53,9 @@ const peerConnections = new Map();
 const remoteStreams = new Map();
 const peerDisconnectTimers = new Map();
 const peerOfferState = new Map();
+const pendingIceCandidates = new Map();
+const makingOffers = new Set();
+const ignoredOffers = new Set();
 let lastCallCapabilityMessage = '';
 let pendingAttachment = null;
 
@@ -646,6 +654,9 @@ function closePeerConnection(username) {
   remoteStreams.delete(username);
   stopSpeakingMonitor(username);
   peerOfferState.delete(username);
+  pendingIceCandidates.delete(username);
+  makingOffers.delete(username);
+  ignoredOffers.delete(username);
 }
 
 function schedulePeerDisconnect(username) {
@@ -695,6 +706,29 @@ function attachStreamToVideo(element, stream, muted = false) {
   const playPromise = element.play?.();
   if (playPromise?.catch) {
     playPromise.catch(() => {});
+  }
+}
+
+function isPeerConnected(pc) {
+  return ['connected', 'completed'].includes(pc?.iceConnectionState) || ['connected', 'completed'].includes(pc?.connectionState);
+}
+
+function queueIceCandidate(username, candidate) {
+  pendingIceCandidates.set(username, [...(pendingIceCandidates.get(username) || []), candidate]);
+}
+
+async function flushIceCandidates(username, pc) {
+  const candidates = pendingIceCandidates.get(username) || [];
+  if (!candidates.length || !pc.remoteDescription) {
+    return;
+  }
+  pendingIceCandidates.delete(username);
+  for (const candidate of candidates) {
+    try {
+      await pc.addIceCandidate(new RTCIceCandidate(candidate));
+    } catch {
+      // Ignore stale candidates from replaced connections.
+    }
   }
 }
 
@@ -778,7 +812,7 @@ function createPeerConnection(peerUsername) {
   }
 
   const pc = new RTCPeerConnection({
-    iceServers: [{ urls: 'stun:stun.l.google.com:19302' }]
+    iceServers: appState.rtcIceServers
   });
 
   if (localStream) {
@@ -791,7 +825,7 @@ function createPeerConnection(peerUsername) {
         type: 'webrtcSignal',
         username: currentUser,
         target: peerUsername,
-        channelId: currentChannelId,
+        channelId: activeCallChannelId || currentChannelId,
         signal: { type: 'candidate', candidate: event.candidate }
       }));
     }
@@ -818,6 +852,17 @@ function createPeerConnection(peerUsername) {
     if (['failed', 'closed'].includes(pc.connectionState)) {
       closePeerConnection(peerUsername);
       renderVideoPanel();
+    }
+  };
+
+  pc.oniceconnectionstatechange = () => {
+    if (pc.iceConnectionState === 'failed') {
+      try {
+        pc.restartIce();
+      } catch {
+        closePeerConnection(peerUsername);
+        renderVideoPanel();
+      }
     }
   };
 
@@ -871,21 +916,29 @@ async function initiateOffer(peerUsername) {
   if (pc.signalingState !== 'stable') {
     return;
   }
-  peerOfferState.set(peerUsername, 'pending');
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  ws.send(JSON.stringify({
-    type: 'webrtcSignal',
-    username: currentUser,
-    target: peerUsername,
-    channelId: currentChannelId,
-    signal: { type: 'offer', sdp: offer }
-  }));
-  peerOfferState.set(peerUsername, 'sent');
+  try {
+    makingOffers.add(peerUsername);
+    peerOfferState.set(peerUsername, 'pending');
+    const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
+    await pc.setLocalDescription(offer);
+    ws.send(JSON.stringify({
+      type: 'webrtcSignal',
+      username: currentUser,
+      target: peerUsername,
+      channelId: activeCallChannelId || currentChannelId,
+      signal: { type: 'offer', sdp: offer }
+    }));
+    peerOfferState.set(peerUsername, 'sent');
+  } finally {
+    makingOffers.delete(peerUsername);
+  }
 }
 
 async function handleIncomingSignal(data) {
   const { from, signal } = data;
+  if (data.channelId && activeCallChannelId && data.channelId !== activeCallChannelId) {
+    return;
+  }
   try {
     await ensureLocalMedia();
   } catch (error) {
@@ -895,27 +948,49 @@ async function handleIncomingSignal(data) {
   const pc = createPeerConnection(from);
 
   if (signal.type === 'offer') {
+    const polite = currentUser > from;
+    const offerCollision = makingOffers.has(from) || pc.signalingState !== 'stable';
+    ignoredOffers.delete(from);
+    if (offerCollision && !polite) {
+      ignoredOffers.add(from);
+      return;
+    }
+    if (offerCollision && polite) {
+      await pc.setLocalDescription({ type: 'rollback' });
+    }
     peerOfferState.set(from, 'received');
     await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+    await flushIceCandidates(from, pc);
     const answer = await pc.createAnswer();
     await pc.setLocalDescription(answer);
     ws.send(JSON.stringify({
       type: 'webrtcSignal',
       username: currentUser,
       target: from,
-      channelId: currentChannelId,
+      channelId: activeCallChannelId || currentChannelId,
       signal: { type: 'answer', sdp: answer }
     }));
     return;
   }
 
   if (signal.type === 'answer') {
+    if (pc.signalingState === 'stable') {
+      return;
+    }
     await pc.setRemoteDescription(new RTCSessionDescription(signal.sdp));
+    await flushIceCandidates(from, pc);
     peerOfferState.set(from, 'connected');
     return;
   }
 
   if (signal.type === 'candidate' && signal.candidate) {
+    if (ignoredOffers.has(from)) {
+      return;
+    }
+    if (!pc.remoteDescription) {
+      queueIceCandidate(from, signal.candidate);
+      return;
+    }
     try {
       await pc.addIceCandidate(new RTCIceCandidate(signal.candidate));
     } catch {
@@ -1865,8 +1940,8 @@ function connectWS() {
       const peers = (data.participants || []).filter((username) => username !== currentUser);
       peers.forEach((peerUsername) => {
         const pc = peerConnections.get(peerUsername);
-        const alreadyConnected = pc && !['closed', 'failed'].includes(pc.connectionState);
-        if (currentUser < peerUsername && localStream && !alreadyConnected) {
+        const shouldCreateOffer = !pc || ['closed', 'failed'].includes(pc.connectionState) || pc.signalingState === 'stable' && !isPeerConnected(pc) && !peerOfferState.get(peerUsername);
+        if (currentUser < peerUsername && localStream && shouldCreateOffer) {
           initiateOffer(peerUsername).catch(() => showToast('Video baglantisi baslatilamadi.'));
         }
       });
@@ -1907,7 +1982,9 @@ function connectWS() {
 
 async function bootstrap() {
   const data = await request(`${API.bootstrap}?username=${encodeURIComponent(currentUser)}`);
+  const rtcConfig = await request(API.rtcConfig).catch(() => null);
   appState = data;
+  appState.rtcIceServers = rtcConfig?.iceServers?.length ? rtcConfig.iceServers : appState.rtcIceServers;
   loadNotificationCenter();
   loadLastSeenMarkers();
   syncSocialState(appState.social);
