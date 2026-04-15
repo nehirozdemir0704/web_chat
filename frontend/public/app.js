@@ -56,6 +56,7 @@ const peerOfferState = new Map();
 const pendingIceCandidates = new Map();
 const makingOffers = new Set();
 const ignoredOffers = new Set();
+const announcedCallStarts = new Set();
 let lastCallCapabilityMessage = '';
 let pendingAttachment = null;
 
@@ -409,6 +410,18 @@ function getCurrentChannel() {
     }
   }
 
+  return null;
+}
+
+function findVisibleChannel(channelId) {
+  for (const server of appState.servers) {
+    for (const category of server.categories || []) {
+      const channel = (category.channels || []).find((item) => item.id === channelId);
+      if (channel) {
+        return { server, channel };
+      }
+    }
+  }
   return null;
 }
 
@@ -938,6 +951,9 @@ async function handleIncomingSignal(data) {
   const { from, signal } = data;
   if (data.channelId && activeCallChannelId && data.channelId !== activeCallChannelId) {
     return;
+  }
+  if (signal.type === 'offer' && data.channelId) {
+    activeCallChannelId = data.channelId;
   }
   try {
     await ensureLocalMedia();
@@ -1932,16 +1948,43 @@ function connectWS() {
     }
 
     if (data.type === 'callState') {
+      const visibleCall = findVisibleChannel(data.channelId);
+      if (!visibleCall) {
+        return;
+      }
       appState.callPresence[data.channelId] = data.participants || [];
       if ((data.participants || []).includes(currentUser)) {
         activeCallChannelId = data.channelId;
+      }
+      const callNoticeKey = `${data.channelId}:${data.startedBy || ''}:${data.startedAt || ''}`;
+      if (
+        data.isNewJoin &&
+        data.startedBy &&
+        data.startedBy !== currentUser &&
+        !announcedCallStarts.has(callNoticeKey)
+      ) {
+        announcedCallStarts.add(callNoticeKey);
+        const channelName = visibleCall.channel?.name || 'sesli oda';
+        playNotificationSound();
+        showToast(`${data.startedBy} ${channelName} kanalinda goruntulu konusma baslatti.`);
+        addNotification(
+          'goruntulu konusma',
+          `${data.startedBy} goruntulu konusma baslatti`,
+          `${channelName} kanalindan katilabilirsin.`
+        );
+        showBrowserNotification(
+          `${data.startedBy} goruntulu konusma baslatti`,
+          `${channelName} kanalindan katilabilirsin.`
+        );
       }
       renderVideoPanel();
       const peers = (data.participants || []).filter((username) => username !== currentUser);
       peers.forEach((peerUsername) => {
         const pc = peerConnections.get(peerUsername);
-        const shouldCreateOffer = !pc || ['closed', 'failed'].includes(pc.connectionState) || pc.signalingState === 'stable' && !isPeerConnected(pc) && !peerOfferState.get(peerUsername);
-        if (currentUser < peerUsername && localStream && shouldCreateOffer) {
+        const shouldCreateOffer = !pc
+          || ['closed', 'failed'].includes(pc.connectionState)
+          || (pc.signalingState === 'stable' && !isPeerConnected(pc) && !peerOfferState.get(peerUsername));
+        if (localStream && shouldCreateOffer) {
           initiateOffer(peerUsername).catch(() => showToast('Video baglantisi baslatilamadi.'));
         }
       });

@@ -1345,6 +1345,8 @@ wss.on('connection', (ws) => {
         return;
       }
 
+      const wasAlreadyInCall = (callPresence[data.channelId] || []).includes(data.username);
+      const startedAt = now();
       removeUserFromCalls(data.username);
       callPresence[data.channelId] = callPresence[data.channelId] || [];
       if (!callPresence[data.channelId].includes(data.username)) {
@@ -1356,8 +1358,12 @@ wss.on('connection', (ws) => {
       wsClients.set(ws, info);
 
       broadcast('callState', {
+        serverId: data.serverId,
         channelId: data.channelId,
-        participants: callPresence[data.channelId]
+        participants: callPresence[data.channelId],
+        startedBy: data.username,
+        startedAt,
+        isNewJoin: !wasAlreadyInCall
       });
       return;
     }
