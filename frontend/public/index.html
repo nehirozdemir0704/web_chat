@@ -949,6 +949,45 @@
       transform: translateY(-1px);
     }
 
+    .auth-file-field {
+      display: grid;
+      gap: 6px;
+      border-radius: 18px;
+      padding: 13px 15px;
+      cursor: pointer;
+      background: rgba(255, 255, 255, 0.05);
+      border: 1px dashed rgba(255, 192, 203, 0.28);
+      color: #fff1f8;
+      transition: border-color 0.18s ease, transform 0.18s ease, background 0.18s ease;
+    }
+
+    .auth-file-field:hover {
+      transform: translateY(-1px);
+      border-color: rgba(255, 105, 180, 0.5);
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .auth-file-field span {
+      font-weight: 800;
+      font-size: 13px;
+      letter-spacing: 0.02em;
+    }
+
+    .auth-file-field small {
+      color: #f2c9df;
+      font-size: 12px;
+    }
+
+    .auth-file-field strong {
+      width: fit-content;
+      margin-top: 2px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255, 99, 184, 0.18);
+      color: #ffe2ef;
+      font-size: 12px;
+    }
+
     .modal.auth-modal .modal-btn {
       border-radius: 16px;
       padding: 14px 18px;

@@ -2095,10 +2095,20 @@ function showRegister() {
     <input id="regUser" class="modal-input" placeholder="Kullanici adi" />
     <input id="regEmail" class="modal-input" type="email" placeholder="E-posta adresi" />
     <input id="regPass" class="modal-input" type="password" placeholder="Sifre" />
-    <input id="regAvatar" class="modal-input" type="file" accept="image/*" />
+    <label class="auth-file-field" for="regAvatar">
+      <span>Profil fotografi</span>
+      <small>Istege bagli. JPG veya PNG yukleyebilirsin.</small>
+      <strong id="regAvatarLabel">Profil fotografi sec</strong>
+    </label>
+    <input id="regAvatar" class="hidden" type="file" accept="image/*" />
     <button id="registerSubmit" class="modal-btn primary">Kayit Ol</button>
     <button id="showLogin" class="modal-btn secondary">Geri Don</button>
   `, 'auth');
+
+  document.getElementById('regAvatar').onchange = (event) => {
+    const fileName = event.target.files?.[0]?.name;
+    document.getElementById('regAvatarLabel').textContent = fileName || 'Profil fotografi sec';
+  };
 
   document.getElementById('registerSubmit').onclick = async () => {
     try {
