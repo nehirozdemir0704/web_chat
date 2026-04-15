@@ -52,9 +52,6 @@ const speakingMeters = new Map();
 const peerConnections = new Map();
 const remoteStreams = new Map();
 const peerDisconnectTimers = new Map();
-const peerReconnectTimers = new Map();
-const peerReconnectAttempts = new Map();
-const peerConnectionStatus = new Map();
 const peerOfferState = new Map();
 const pendingIceCandidates = new Map();
 const makingOffers = new Set();
@@ -656,34 +653,23 @@ function wsProtocol() {
   return location.protocol === 'https:' ? 'wss' : 'ws';
 }
 
-function closePeerConnection(username, options = {}) {
+function closePeerConnection(username) {
   const disconnectTimer = peerDisconnectTimers.get(username);
   if (disconnectTimer) {
     clearTimeout(disconnectTimer);
     peerDisconnectTimers.delete(username);
-  }
-  const reconnectTimer = peerReconnectTimers.get(username);
-  if (reconnectTimer && !options.preserveReconnect) {
-    clearTimeout(reconnectTimer);
-    peerReconnectTimers.delete(username);
   }
   const pc = peerConnections.get(username);
   if (pc) {
     pc.close();
     peerConnections.delete(username);
   }
-  if (!options.preserveReconnect) {
-    remoteStreams.delete(username);
-    stopSpeakingMonitor(username);
-  }
+  remoteStreams.delete(username);
+  stopSpeakingMonitor(username);
   peerOfferState.delete(username);
   pendingIceCandidates.delete(username);
   makingOffers.delete(username);
   ignoredOffers.delete(username);
-  if (!options.preserveReconnect) {
-    peerConnectionStatus.delete(username);
-    peerReconnectAttempts.delete(username);
-  }
 }
 
 function schedulePeerDisconnect(username) {
@@ -692,10 +678,6 @@ function schedulePeerDisconnect(username) {
     clearTimeout(existing);
   }
   const timeout = setTimeout(() => {
-    if (localStream && getCurrentCallMembers().includes(username)) {
-      schedulePeerReconnect(username, 'Baglanti koptu, yeniden deneniyor.');
-      return;
-    }
     closePeerConnection(username);
     renderVideoPanel();
   }, 6000);
@@ -708,56 +690,6 @@ function clearPeerDisconnect(username) {
     clearTimeout(timeout);
     peerDisconnectTimers.delete(username);
   }
-}
-
-function clearPeerReconnect(username) {
-  const timeout = peerReconnectTimers.get(username);
-  if (timeout) {
-    clearTimeout(timeout);
-    peerReconnectTimers.delete(username);
-  }
-}
-
-function schedulePeerReconnect(username, message = 'Baglanti yeniden kuruluyor.') {
-  if (!localStream || !getCurrentCallMembers().includes(username)) {
-    return;
-  }
-  if (peerReconnectTimers.has(username)) {
-    return;
-  }
-
-  const attempt = (peerReconnectAttempts.get(username) || 0) + 1;
-  peerReconnectAttempts.set(username, attempt);
-  peerConnectionStatus.set(username, `${message} Deneme ${attempt}`);
-  renderVideoPanel();
-
-  const delay = Math.min(1200 * attempt, 5000);
-  const timer = setTimeout(() => {
-    peerReconnectTimers.delete(username);
-    const pc = peerConnections.get(username);
-    if (isPeerConnected(pc)) {
-      peerConnectionStatus.set(username, 'Baglandi');
-      peerReconnectAttempts.delete(username);
-      renderVideoPanel();
-      return;
-    }
-
-    closePeerConnection(username, { preserveReconnect: true });
-    if (!localStream || !getCurrentCallMembers().includes(username)) {
-      renderVideoPanel();
-      return;
-    }
-
-    initiateOffer(username, { iceRestart: true }).catch(() => {
-      if ((peerReconnectAttempts.get(username) || 0) < 5) {
-        schedulePeerReconnect(username, 'Baglanti tekrar deneniyor.');
-      } else {
-        peerConnectionStatus.set(username, 'Baglanti kurulamadi. Cagridan cik-takrar gir deneyin.');
-        renderVideoPanel();
-      }
-    });
-  }, delay);
-  peerReconnectTimers.set(username, timer);
 }
 
 function upsertRemoteStream(username, incomingStream) {
@@ -792,29 +724,6 @@ function attachStreamToVideo(element, stream, muted = false) {
 
 function isPeerConnected(pc) {
   return ['connected', 'completed'].includes(pc?.iceConnectionState) || ['connected', 'completed'].includes(pc?.connectionState);
-}
-
-function formatPeerStatus(username) {
-  const pc = peerConnections.get(username);
-  if (peerConnectionStatus.has(username)) {
-    return peerConnectionStatus.get(username);
-  }
-  if (!pc) {
-    return remoteStreams.has(username) ? 'Goruntu aliniyor' : 'Baglanti bekleniyor';
-  }
-  if (isPeerConnected(pc)) {
-    return 'Baglandi';
-  }
-  if (pc.connectionState === 'connecting' || pc.iceConnectionState === 'checking') {
-    return 'Baglaniyor';
-  }
-  if (pc.connectionState === 'disconnected' || pc.iceConnectionState === 'disconnected') {
-    return 'Koptu, yeniden deneniyor';
-  }
-  if (pc.connectionState === 'failed' || pc.iceConnectionState === 'failed') {
-    return 'Baglanti yenileniyor';
-  }
-  return 'Baglanti hazirlaniyor';
 }
 
 function queueIceCandidate(username, candidate) {
@@ -875,24 +784,13 @@ function renderVideoPanel() {
   }
 
   for (const [username] of remoteStreams.entries()) {
-    const status = formatPeerStatus(username);
     cards.push(`
       <div class="video-card ${isUserSpeaking(username) ? 'speaking' : ''}">
         <video id="remoteVideo_${username}" autoplay playsinline></video>
-        <div class="video-label">${escapeHtml(username)} ${isUserSpeaking(username) ? '• konusuyor' : ''} · ${escapeHtml(status)}</div>
+        <div class="video-label">${escapeHtml(username)} ${isUserSpeaking(username) ? '• konusuyor' : ''}</div>
       </div>
     `);
   }
-
-  participants
-    .filter((username) => username !== currentUser && !remoteStreams.has(username))
-    .forEach((username) => {
-      cards.push(`
-        <div class="video-card waiting">
-          <div class="empty-state">${escapeHtml(username)} icin ${escapeHtml(formatPeerStatus(username))}</div>
-        </div>
-      `);
-    });
 
   if (!cards.length) {
     cards.push('<div class="empty-state">Cagri acik. Diger katilimcilari bekliyorsun.</div>');
@@ -902,7 +800,6 @@ function renderVideoPanel() {
     <div class="panel-subtitle">Kanal: ${escapeHtml((getCurrentServer()?.categories.flatMap((category) => category.channels).find((channel) => channel.id === (activeCallChannelId || currentChannelId))?.name) || '-')}</div>
     <div class="panel-subtitle">Katilimcilar: ${participants.join(', ') || currentUser}</div>
     <div class="panel-subtitle">Durum: ${localStream ? 'Goruntulu konusma acik' : 'Baglanti bekleniyor'}</div>
-    ${participants.filter((username) => username !== currentUser).map((username) => `<div class="panel-subtitle">${escapeHtml(username)}: ${escapeHtml(formatPeerStatus(username))}</div>`).join('')}
     ${lastCallCapabilityMessage ? `<div class="panel-subtitle">${escapeHtml(lastCallCapabilityMessage)}</div>` : ''}
     <div class="video-grid">${cards.join('')}</div>
   `;
@@ -949,7 +846,6 @@ function createPeerConnection(peerUsername) {
 
   pc.ontrack = (event) => {
     const stream = upsertRemoteStream(peerUsername, event.streams[0]);
-    peerConnectionStatus.set(peerUsername, 'Goruntu aliniyor');
     startSpeakingMonitor(stream, peerUsername);
     renderVideoPanel();
   };
@@ -959,59 +855,25 @@ function createPeerConnection(peerUsername) {
       clearPeerDisconnect(peerUsername);
       if (['connected', 'completed'].includes(pc.connectionState)) {
         peerOfferState.set(peerUsername, 'connected');
-        peerConnectionStatus.set(peerUsername, 'Baglandi');
-        peerReconnectAttempts.delete(peerUsername);
-        clearPeerReconnect(peerUsername);
-      } else {
-        peerConnectionStatus.set(peerUsername, 'Baglaniyor');
       }
-      renderVideoPanel();
       return;
     }
     if (pc.connectionState === 'disconnected') {
-      peerConnectionStatus.set(peerUsername, 'Koptu, yeniden deneniyor');
       schedulePeerDisconnect(peerUsername);
-      renderVideoPanel();
       return;
     }
     if (['failed', 'closed'].includes(pc.connectionState)) {
-      peerConnectionStatus.set(peerUsername, 'Baglanti yenileniyor');
-      if (localStream && getCurrentCallMembers().includes(peerUsername)) {
-        schedulePeerReconnect(peerUsername, 'Baglanti yenileniyor.');
-        renderVideoPanel();
-        return;
-      }
       closePeerConnection(peerUsername);
       renderVideoPanel();
     }
   };
 
   pc.oniceconnectionstatechange = () => {
-    if (['connected', 'completed'].includes(pc.iceConnectionState)) {
-      peerConnectionStatus.set(peerUsername, 'Baglandi');
-      peerReconnectAttempts.delete(peerUsername);
-      clearPeerDisconnect(peerUsername);
-      clearPeerReconnect(peerUsername);
-      renderVideoPanel();
-      return;
-    }
-    if (pc.iceConnectionState === 'disconnected') {
-      peerConnectionStatus.set(peerUsername, 'Koptu, yeniden deneniyor');
-      schedulePeerDisconnect(peerUsername);
-      renderVideoPanel();
-      return;
-    }
     if (pc.iceConnectionState === 'failed') {
-      peerConnectionStatus.set(peerUsername, 'ICE yenileniyor');
       try {
         pc.restartIce();
-        schedulePeerReconnect(peerUsername, 'ICE baglantisi yenileniyor.');
       } catch {
-        if (localStream && getCurrentCallMembers().includes(peerUsername)) {
-          schedulePeerReconnect(peerUsername, 'Baglanti yeniden kuruluyor.');
-        } else {
-          closePeerConnection(peerUsername);
-        }
+        closePeerConnection(peerUsername);
         renderVideoPanel();
       }
     }
@@ -1058,7 +920,7 @@ async function ensureLocalMedia() {
   throw lastError || new Error('Kamera veya mikrofon acilamadi.');
 }
 
-async function initiateOffer(peerUsername, options = {}) {
+async function initiateOffer(peerUsername) {
   const pc = createPeerConnection(peerUsername);
   const offerState = peerOfferState.get(peerUsername);
   if (offerState === 'pending') {
@@ -1070,13 +932,7 @@ async function initiateOffer(peerUsername, options = {}) {
   try {
     makingOffers.add(peerUsername);
     peerOfferState.set(peerUsername, 'pending');
-    peerConnectionStatus.set(peerUsername, options.iceRestart ? 'Yeniden baglaniyor' : 'Baglaniyor');
-    renderVideoPanel();
-    const offer = await pc.createOffer({
-      offerToReceiveAudio: true,
-      offerToReceiveVideo: true,
-      iceRestart: Boolean(options.iceRestart)
-    });
+    const offer = await pc.createOffer({ offerToReceiveAudio: true, offerToReceiveVideo: true });
     await pc.setLocalDescription(offer);
     ws.send(JSON.stringify({
       type: 'webrtcSignal',
@@ -1086,8 +942,6 @@ async function initiateOffer(peerUsername, options = {}) {
       signal: { type: 'offer', sdp: offer }
     }));
     peerOfferState.set(peerUsername, 'sent');
-    peerConnectionStatus.set(peerUsername, options.iceRestart ? 'Yeniden baglanti istegi gonderildi' : 'Baglanti istegi gonderildi');
-    renderVideoPanel();
   } finally {
     makingOffers.delete(peerUsername);
   }
