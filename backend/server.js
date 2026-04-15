@@ -312,6 +312,50 @@ function buildEffectivePresence() {
   return effectivePresence;
 }
 
+function removeUserFromVoice(username) {
+  let changed = false;
+  Object.keys(state.voicePresence).forEach((channelId) => {
+    const previousLength = (state.voicePresence[channelId] || []).length;
+    state.voicePresence[channelId] = (state.voicePresence[channelId] || []).filter((user) => user !== username);
+    if (state.voicePresence[channelId].length !== previousLength) {
+      changed = true;
+    }
+  });
+
+  if (state.presence[username]?.voiceChannelId) {
+    state.presence[username].voiceChannelId = null;
+    changed = true;
+  }
+
+  return changed;
+}
+
+function cleanupOfflineVoicePresence() {
+  let changed = false;
+  const validUsers = new Set(state.users.map((user) => user.username));
+
+  Object.keys(state.voicePresence).forEach((channelId) => {
+    const filtered = (state.voicePresence[channelId] || []).filter((username, index, list) => (
+      validUsers.has(username)
+      && onlineUsers.has(username)
+      && list.indexOf(username) === index
+    ));
+    if (filtered.length !== (state.voicePresence[channelId] || []).length) {
+      changed = true;
+    }
+    state.voicePresence[channelId] = filtered;
+  });
+
+  state.users.forEach((user) => {
+    if (!onlineUsers.has(user.username) && state.presence[user.username]?.voiceChannelId) {
+      state.presence[user.username].voiceChannelId = null;
+      changed = true;
+    }
+  });
+
+  return changed;
+}
+
 function publicBaseUrl(req) {
   const configured = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL;
   if (configured) {
@@ -1412,6 +1456,9 @@ wss.on('connection', (ws) => {
     if (data.type === 'identify') {
       wsClients.set(ws, { username: data.username, currentCallChannelId: null });
       onlineUsers.add(data.username);
+      if (cleanupOfflineVoicePresence()) {
+        saveState();
+      }
       broadcastState();
       return;
     }
@@ -1476,9 +1523,7 @@ wss.on('connection', (ws) => {
         return;
       }
 
-      Object.keys(state.voicePresence).forEach((channelId) => {
-        state.voicePresence[channelId] = (state.voicePresence[channelId] || []).filter((user) => user !== data.username);
-      });
+      removeUserFromVoice(data.username);
       state.voicePresence[data.channelId] = state.voicePresence[data.channelId] || [];
       if (!state.voicePresence[data.channelId].includes(data.username)) {
         state.voicePresence[data.channelId].push(data.username);
@@ -1493,12 +1538,7 @@ wss.on('connection', (ws) => {
     }
 
     if (data.type === 'leaveVoice') {
-      Object.keys(state.voicePresence).forEach((channelId) => {
-        state.voicePresence[channelId] = (state.voicePresence[channelId] || []).filter((user) => user !== data.username);
-      });
-
-      state.presence[data.username] = state.presence[data.username] || {};
-      state.presence[data.username].voiceChannelId = null;
+      removeUserFromVoice(data.username);
       saveState();
       if (data.serverId) {
         broadcastServer(data.serverId);
@@ -1803,6 +1843,7 @@ wss.on('connection', (ws) => {
     if (info?.username) {
       onlineUsers.delete(info.username);
       removeUserFromCalls(info.username);
+      const voiceChanged = removeUserFromVoice(info.username);
       Object.keys(typingState).forEach((scopeKey) => {
         setTyping(scopeKey, info.username, false);
       });
@@ -1810,7 +1851,11 @@ wss.on('connection', (ws) => {
         username: info.username,
         channelId: info.currentCallChannelId
       });
+      if (voiceChanged) {
+        saveState();
+      }
       broadcastState();
+      state.servers.forEach((serverItem) => broadcastServer(serverItem.id));
     }
     wsClients.delete(ws);
   });
