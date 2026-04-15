@@ -2,6 +2,8 @@ const API = {
   bootstrap: '/api/bootstrap',
   register: '/api/register',
   login: '/api/login',
+  passwordResetRequest: '/api/password-reset/request',
+  passwordResetConfirm: '/api/password-reset/confirm',
   createServer: '/api/server',
   deleteServer: '/api/server/delete',
   serverInvite: '/api/server/invite',
@@ -2043,6 +2045,12 @@ async function bootstrap() {
 }
 
 function showLogin() {
+  const resetToken = new URLSearchParams(location.search).get('resetToken');
+  if (resetToken) {
+    showResetPassword(resetToken);
+    return;
+  }
+
   showModal(`
     <div class="auth-sparkle">Hos Geldiniz</div>
     <div class="auth-caption">
@@ -2054,6 +2062,7 @@ function showLogin() {
     <input id="loginUser" class="modal-input" placeholder="Kullanici adi" />
     <input id="loginPass" class="modal-input" type="password" placeholder="Sifre" />
     <button id="loginSubmit" class="modal-btn primary">Giris Yap</button>
+    <button id="showForgotPassword" class="modal-btn secondary">Sifremi Unuttum</button>
     <button id="showRegister" class="modal-btn secondary">Kayit Ol</button>
   `, 'auth');
 
@@ -2071,6 +2080,7 @@ function showLogin() {
   };
 
   document.getElementById('showRegister').onclick = showRegister;
+  document.getElementById('showForgotPassword').onclick = showForgotPassword;
 }
 
 function showRegister() {
@@ -2081,8 +2091,9 @@ function showRegister() {
       Profilini olustur ve sunucuna katil.
     </div>
     <h2>Yeni Uye</h2>
-    <p class="modal-copy">Kayit olan herkes varsayilan sunucuya uye olarak eklenir.</p>
+    <p class="modal-copy">E-posta adresin sifre kurtarma icin kullanilir.</p>
     <input id="regUser" class="modal-input" placeholder="Kullanici adi" />
+    <input id="regEmail" class="modal-input" type="email" placeholder="E-posta adresi" />
     <input id="regPass" class="modal-input" type="password" placeholder="Sifre" />
     <input id="regAvatar" class="modal-input" type="file" accept="image/*" />
     <button id="registerSubmit" class="modal-btn primary">Kayit Ol</button>
@@ -2092,13 +2103,14 @@ function showRegister() {
   document.getElementById('registerSubmit').onclick = async () => {
     try {
       const username = document.getElementById('regUser').value.trim();
+      const email = document.getElementById('regEmail').value.trim();
       const password = document.getElementById('regPass').value;
       const file = document.getElementById('regAvatar').files?.[0];
 
       const submitRegister = async (avatar = null) => {
         await request(API.register, {
           method: 'POST',
-          body: JSON.stringify({ username, password, avatar })
+          body: JSON.stringify({ username, email, password, avatar })
         });
         alert('Kayit tamam. Giris yapabilirsin.');
         showLogin();
@@ -2117,6 +2129,102 @@ function showRegister() {
   };
 
   document.getElementById('showLogin').onclick = showLogin;
+}
+
+function showForgotPassword() {
+  showModal(`
+    <div class="auth-sparkle">Sifre Kurtarma</div>
+    <div class="auth-caption">
+      <strong>Hesabini geri al</strong>
+      Kullanici adin ve e-postan eslesirse kurtarma baglantisi olusturulur.
+    </div>
+    <h2>Sifremi Unuttum</h2>
+    <p class="modal-copy">Kayit olurken kullandigin kullanici adi ve e-posta adresini gir.</p>
+    <input id="resetUser" class="modal-input" placeholder="Kullanici adi" />
+    <input id="resetEmail" class="modal-input" type="email" placeholder="E-posta adresi" />
+    <button id="requestResetSubmit" class="modal-btn primary">Kurtarma Baglantisi Gonder</button>
+    <button id="resetBackLogin" class="modal-btn secondary">Giris Ekranina Don</button>
+  `, 'auth');
+
+  document.getElementById('requestResetSubmit').onclick = async () => {
+    try {
+      const username = document.getElementById('resetUser').value.trim();
+      const email = document.getElementById('resetEmail').value.trim();
+      const data = await request(API.passwordResetRequest, {
+        method: 'POST',
+        body: JSON.stringify({ username, email })
+      });
+
+      showModal(`
+        <div class="auth-sparkle">Kontrol Et</div>
+        <div class="auth-caption">
+          <strong>E-posta gonderimi hazir</strong>
+          Baglanti 30 dakika gecerlidir.
+        </div>
+        <h2>Kurtarma Baglantisi</h2>
+        <p class="modal-copy">${escapeHtml(data.message || 'Bilgiler eslesiyorsa sifre sifirlama baglantisi e-postana gonderildi.')}</p>
+        ${data.resetUrl ? `
+          <p class="modal-copy">Mail servisi ayarli olmadigi icin test baglantisi burada gorunuyor:</p>
+          <input id="devResetUrl" class="modal-input" value="${escapeHtml(data.resetUrl)}" readonly />
+          <button id="openDevReset" class="modal-btn primary">Bu Baglanti Ile Devam Et</button>
+        ` : ''}
+        <button id="resetDoneLogin" class="modal-btn secondary">Giris Ekranina Don</button>
+      `, 'auth');
+
+      const openDevReset = document.getElementById('openDevReset');
+      if (openDevReset && data.resetUrl) {
+        openDevReset.onclick = () => {
+          location.href = data.resetUrl;
+        };
+      }
+      document.getElementById('resetDoneLogin').onclick = showLogin;
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  document.getElementById('resetBackLogin').onclick = showLogin;
+}
+
+function showResetPassword(token) {
+  showModal(`
+    <div class="auth-sparkle">Yeni Sifre</div>
+    <div class="auth-caption">
+      <strong>Son adim</strong>
+      Hesabin icin yeni sifreni belirle.
+    </div>
+    <h2>Sifreyi Yenile</h2>
+    <p class="modal-copy">Yeni sifreni yaz ve kaydet.</p>
+    <input id="newResetPass" class="modal-input" type="password" placeholder="Yeni sifre" />
+    <input id="newResetPassAgain" class="modal-input" type="password" placeholder="Yeni sifre tekrar" />
+    <button id="confirmResetSubmit" class="modal-btn primary">Sifreyi Guncelle</button>
+    <button id="resetCancelLogin" class="modal-btn secondary">Giris Ekranina Don</button>
+  `, 'auth');
+
+  document.getElementById('confirmResetSubmit').onclick = async () => {
+    try {
+      const password = document.getElementById('newResetPass').value;
+      const passwordAgain = document.getElementById('newResetPassAgain').value;
+      if (password !== passwordAgain) {
+        alert('Sifreler ayni olmali.');
+        return;
+      }
+      await request(API.passwordResetConfirm, {
+        method: 'POST',
+        body: JSON.stringify({ token, password })
+      });
+      history.replaceState(null, '', location.pathname);
+      alert('Sifren guncellendi. Yeni sifrenle giris yapabilirsin.');
+      showLogin();
+    } catch (error) {
+      alert(error.message);
+    }
+  };
+
+  document.getElementById('resetCancelLogin').onclick = () => {
+    history.replaceState(null, '', location.pathname);
+    showLogin();
+  };
 }
 
 function sendMessage() {

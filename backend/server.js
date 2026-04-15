@@ -1,4 +1,5 @@
 const express = require('express');
+const crypto = require('crypto');
 const fs = require('fs');
 const http = require('http');
 const os = require('os');
@@ -35,6 +36,14 @@ function inviteCode() {
 
 function now() {
   return Date.now();
+}
+
+function normalizeEmail(email) {
+  return typeof email === 'string' ? email.trim().toLowerCase() : '';
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 function ensureDataDir() {
@@ -114,7 +123,8 @@ function defaultState() {
       admin: { status: 'online', currentServerId: generalServerId, currentChannelId: announcementsId, voiceChannelId: null },
       moderator: { status: 'away', currentServerId: generalServerId, currentChannelId: modRoomId, voiceChannelId: null },
       student: { status: 'online', currentServerId: generalServerId, currentChannelId: generalTextId, voiceChannelId: voiceLobbyId }
-    }
+    },
+    passwordResetTokens: []
   };
 }
 
@@ -144,8 +154,10 @@ function normalizeState(loadedState) {
   nextState.directMessages = nextState.directMessages && typeof nextState.directMessages === 'object' ? nextState.directMessages : {};
   nextState.voicePresence = nextState.voicePresence && typeof nextState.voicePresence === 'object' ? nextState.voicePresence : {};
   nextState.presence = nextState.presence && typeof nextState.presence === 'object' ? nextState.presence : {};
+  nextState.passwordResetTokens = Array.isArray(nextState.passwordResetTokens) ? nextState.passwordResetTokens : [];
 
   nextState.users.forEach((user) => {
+    user.email = typeof user.email === 'string' ? user.email.trim().toLowerCase() : '';
     user.friends = Array.isArray(user.friends) ? [...new Set(user.friends)] : [];
     user.blocked = Array.isArray(user.blocked) ? [...new Set(user.blocked)] : [];
     user.incomingRequests = Array.isArray(user.incomingRequests) ? [...new Set(user.incomingRequests)] : [];
@@ -294,6 +306,41 @@ function buildEffectivePresence() {
   });
 
   return effectivePresence;
+}
+
+function publicBaseUrl(req) {
+  const configured = process.env.PUBLIC_URL || process.env.RENDER_EXTERNAL_URL;
+  if (configured) {
+    return configured.replace(/\/$/, '');
+  }
+  const proto = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+  return `${proto}://${req.get('host')}`;
+}
+
+async function sendPasswordResetEmail(email, resetUrl, username) {
+  if (process.env.RESEND_API_KEY && process.env.MAIL_FROM) {
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${process.env.RESEND_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from: process.env.MAIL_FROM,
+        to: email,
+        subject: 'Topluluk Sunucusu sifre sifirlama',
+        html: `
+          <p>Merhaba ${username},</p>
+          <p>Sifreni yenilemek icin asagidaki baglantiya tikla. Bu baglanti 30 dakika gecerlidir.</p>
+          <p><a href="${resetUrl}">Sifremi sifirla</a></p>
+          <p>Bu istegi sen yapmadiysan bu e-postayi yok sayabilirsin.</p>
+        `
+      })
+    });
+    return response.ok;
+  }
+
+  return false;
 }
 
 function getDmKey(userA, userB) {
@@ -732,10 +779,15 @@ app.get('/api/rtc-config', (req, res) => {
 app.post('/api/register', (req, res) => {
   const username = req.body.username?.trim();
   const password = req.body.password;
+  const email = normalizeEmail(req.body.email);
   const avatar = req.body.avatar;
 
-  if (!username || !password) {
-    return res.status(400).json({ error: 'Username and password required.' });
+  if (!username || !password || !email) {
+    return res.status(400).json({ error: 'Kullanici adi, e-posta ve sifre gerekli.' });
+  }
+
+  if (!isValidEmail(email)) {
+    return res.status(400).json({ error: 'Gecerli bir e-posta adresi gir.' });
   }
 
   if (avatar && (typeof avatar !== 'string' || !avatar.startsWith('data:image/'))) {
@@ -746,8 +798,13 @@ app.post('/api/register', (req, res) => {
     return res.status(400).json({ error: 'Username already exists.' });
   }
 
+  if (state.users.some((user) => normalizeEmail(user.email) === email)) {
+    return res.status(400).json({ error: 'Bu e-posta ile zaten bir hesap var.' });
+  }
+
   const user = {
     username,
+    email,
     password,
     banned: false,
     mutedUntil: null,
@@ -770,6 +827,74 @@ app.post('/api/register', (req, res) => {
   saveState();
   broadcastState();
   state.servers.forEach((serverItem) => broadcastServer(serverItem.id));
+  res.json({ success: true });
+});
+
+app.post('/api/password-reset/request', async (req, res) => {
+  const username = req.body.username?.trim();
+  const email = normalizeEmail(req.body.email);
+
+  if (!username || !email) {
+    return res.status(400).json({ error: 'Kullanici adi ve e-posta gerekli.' });
+  }
+
+  const user = getUser(username);
+  const genericResponse = {
+    success: true,
+    message: 'Bilgiler eslesiyorsa sifre sifirlama baglantisi e-postana gonderildi.'
+  };
+
+  if (!user || normalizeEmail(user.email) !== email) {
+    return res.json(genericResponse);
+  }
+
+  const token = crypto.randomBytes(32).toString('hex');
+  const expiresAt = now() + 30 * 60 * 1000;
+  state.passwordResetTokens = (state.passwordResetTokens || [])
+    .filter((item) => item.username !== username && item.expiresAt > now());
+  state.passwordResetTokens.push({ token, username, expiresAt, used: false, createdAt: now() });
+
+  const resetUrl = `${publicBaseUrl(req)}?resetToken=${encodeURIComponent(token)}`;
+  const mailSent = await sendPasswordResetEmail(email, resetUrl, username).catch((error) => {
+    console.error('Password reset email failed:', error.message);
+    return false;
+  });
+
+  saveState();
+  return res.json({
+    ...genericResponse,
+    mailSent,
+    resetUrl: mailSent ? null : resetUrl
+  });
+});
+
+app.post('/api/password-reset/confirm', (req, res) => {
+  const token = typeof req.body.token === 'string' ? req.body.token.trim() : '';
+  const password = req.body.password;
+
+  if (!token || !password) {
+    return res.status(400).json({ error: 'Sifirlama kodu ve yeni sifre gerekli.' });
+  }
+
+  if (password.length < 3) {
+    return res.status(400).json({ error: 'Sifre en az 3 karakter olmali.' });
+  }
+
+  const resetItem = (state.passwordResetTokens || []).find((item) => item.token === token && !item.used);
+  if (!resetItem || resetItem.expiresAt < now()) {
+    return res.status(400).json({ error: 'Sifirlama baglantisi gecersiz veya suresi dolmus.' });
+  }
+
+  const user = getUser(resetItem.username);
+  if (!user) {
+    return res.status(400).json({ error: 'Kullanici bulunamadi.' });
+  }
+
+  user.password = password;
+  resetItem.used = true;
+  state.passwordResetTokens = (state.passwordResetTokens || [])
+    .filter((item) => !item.used && item.expiresAt > now());
+  saveState();
   res.json({ success: true });
 });
 
