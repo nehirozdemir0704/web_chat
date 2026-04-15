@@ -61,6 +61,7 @@ const ignoredOffers = new Set();
 const announcedCallStarts = new Set();
 let lastCallCapabilityMessage = '';
 let pendingAttachment = null;
+const pendingOutgoingMessages = new Map();
 
 const serverList = document.getElementById('serverList');
 const channelTree = document.getElementById('channelTree');
@@ -470,6 +471,51 @@ function getActiveConversationMessages() {
   }
   const channel = getCurrentChannel();
   return channel ? (appState.messages[channel.id] || []) : [];
+}
+
+function createClientMessageId() {
+  return `client_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function mergeMessageList(existingMessages = [], incomingMessages = []) {
+  const merged = [...existingMessages];
+
+  incomingMessages.forEach((incoming) => {
+    const index = merged.findIndex((message) => (
+      message.id === incoming.id
+      || (incoming.clientId && message.clientId === incoming.clientId)
+      || (incoming.clientId && message.id === incoming.clientId)
+    ));
+
+    if (index >= 0) {
+      merged[index] = { ...incoming, pending: false };
+      if (incoming.clientId) {
+        pendingOutgoingMessages.delete(incoming.clientId);
+      }
+      return;
+    }
+
+    merged.push({ ...incoming, pending: false });
+  });
+
+  return merged;
+}
+
+function removePendingMessage(clientId) {
+  const pending = pendingOutgoingMessages.get(clientId);
+  if (!pending) {
+    return;
+  }
+
+  if (pending.scope === 'dm') {
+    appState.directMessages[pending.peerUsername] = (appState.directMessages[pending.peerUsername] || [])
+      .filter((message) => message.clientId !== clientId && message.id !== clientId);
+  } else {
+    appState.messages[pending.channelId] = (appState.messages[pending.channelId] || [])
+      .filter((message) => message.clientId !== clientId && message.id !== clientId);
+  }
+  pendingOutgoingMessages.delete(clientId);
+  renderMessages();
 }
 
 function dmScopeKey(username) {
@@ -1164,14 +1210,14 @@ function renderMessages() {
 
     const row = document.createElement('div');
     const mentionedMe = message.user !== currentUser && messageMentionsUser(message.text, currentUser);
-    row.className = `message-row ${mentionedMe ? 'mention-highlight' : ''}`;
-    const reactions = Object.entries(message.reactions || {})
+    row.className = `message-row ${mentionedMe ? 'mention-highlight' : ''} ${message.pending ? 'pending-message' : ''}`;
+    const reactions = message.pending ? '' : Object.entries(message.reactions || {})
       .map(([emoji, users]) => {
         const active = users.includes(currentUser) ? 'active' : '';
         return `<button class="reaction-chip ${active}" data-message-id="${message.id}" data-emoji="${emoji}">${emoji} ${users.length}</button>`;
       })
       .join('');
-    const controls = canManageMessage(message)
+    const controls = !message.pending && canManageMessage(message)
       ? `
         <div class="message-controls">
           ${['admin', 'mod'].includes(myRole()) ? `<button class="tiny-action" data-action="pin" data-message-id="${message.id}">${pinnedIds.includes(message.id) ? 'Pinden Cikar' : 'Pinle'}</button>` : ''}
@@ -1197,6 +1243,7 @@ function renderMessages() {
           <span class="message-author">${escapeHtml(message.user)}</span>
           ${roleBadgeMarkup(message.user)}
           <span>${formatTime(message.time)}</span>
+          ${message.pending ? '<span>gonderiliyor...</span>' : ''}
           ${message.editedAt ? '<span>(duzenlendi)</span>' : ''}
           ${activeSidebarTab === 'dm' && message.user === currentUser && activeDmUser
             ? `<span>${(message.seenBy || []).includes(activeDmUser) ? 'goruldu' : 'gonderildi'}</span>`
@@ -1208,7 +1255,7 @@ function renderMessages() {
           ${attachment}
           <div class="reactions-row">${reactions}</div>
           <div class="message-actions-row">
-            <div class="reaction-palette">
+            <div class="reaction-palette ${message.pending ? 'hidden' : ''}">
               <button class="emoji-btn" data-message-id="${message.id}" data-emoji="👍">👍</button>
               <button class="emoji-btn" data-message-id="${message.id}" data-emoji="❤️">❤️</button>
               <button class="emoji-btn" data-message-id="${message.id}" data-emoji="😂">😂</button>
@@ -1863,7 +1910,7 @@ function connectWS() {
 
     if (data.type === 'messages') {
       if (activeSidebarTab === 'members') {
-        appState.messages[data.channelId] = data.messages;
+        appState.messages[data.channelId] = mergeMessageList(appState.messages[data.channelId], data.messages);
       }
       if (data.channelId === currentChannelId && activeSidebarTab === 'members') {
         markConversationSeen();
@@ -1874,7 +1921,7 @@ function connectWS() {
 
     if (data.type === 'dmMessages') {
       const previousCount = (appState.directMessages[data.peerUsername] || []).length;
-      appState.directMessages[data.peerUsername] = data.messages;
+      appState.directMessages[data.peerUsername] = mergeMessageList(appState.directMessages[data.peerUsername], data.messages);
       if (activeSidebarTab === 'dm' && activeDmUser === data.peerUsername) {
         unreadDmCounts[data.peerUsername] = 0;
         markConversationSeen();
@@ -1899,7 +1946,7 @@ function connectWS() {
       if (!appState.messages[channelId]) {
         appState.messages[channelId] = [];
       }
-      appState.messages[channelId].push(message);
+      appState.messages[channelId] = mergeMessageList(appState.messages[channelId], [message]);
       const isMention = message.user !== currentUser && messageMentionsUser(message.text, currentUser);
       if (message.user !== currentUser) {
         playNotificationSound();
@@ -2063,6 +2110,9 @@ function connectWS() {
     }
 
     if (data.type === 'error') {
+      if (data.clientId) {
+        removePendingMessage(data.clientId);
+      }
       alert(data.message);
     }
   };
@@ -2295,12 +2345,30 @@ function sendMessage() {
   }
 
   if (activeSidebarTab === 'dm' && activeDmUser) {
+    const clientId = createClientMessageId();
+    const outgoingText = text || (pendingAttachment?.name || 'Ek paylasildi');
+    const outgoingAttachment = pendingAttachment;
+    appState.directMessages[activeDmUser] = appState.directMessages[activeDmUser] || [];
+    appState.directMessages[activeDmUser].push({
+      id: clientId,
+      clientId,
+      user: currentUser,
+      text: outgoingText,
+      time: Date.now(),
+      reactions: {},
+      seenBy: [currentUser],
+      attachment: outgoingAttachment,
+      pending: true
+    });
+    pendingOutgoingMessages.set(clientId, { scope: 'dm', peerUsername: activeDmUser });
+    renderMessages();
     ws.send(JSON.stringify({
       type: 'dmMessage',
       username: currentUser,
       peerUsername: activeDmUser,
-      text: text || (pendingAttachment?.name || 'Ek paylasildi'),
-      attachment: pendingAttachment
+      text: outgoingText,
+      attachment: outgoingAttachment,
+      clientId
     }));
     messageInput.value = '';
     pendingAttachment = null;
@@ -2317,13 +2385,31 @@ function sendMessage() {
     return;
   }
 
+  const clientId = createClientMessageId();
+  const outgoingText = text || (pendingAttachment?.name || 'Ek paylasildi');
+  const outgoingAttachment = pendingAttachment;
+  appState.messages[currentChannelId] = appState.messages[currentChannelId] || [];
+  appState.messages[currentChannelId].push({
+    id: clientId,
+    clientId,
+    user: currentUser,
+    text: outgoingText,
+    time: Date.now(),
+    reactions: {},
+    attachment: outgoingAttachment,
+    pending: true
+  });
+  pendingOutgoingMessages.set(clientId, { scope: 'channel', channelId: currentChannelId });
+  renderMessages();
+
   ws.send(JSON.stringify({
     type: 'message',
     serverId: currentServerId,
     channelId: currentChannelId,
     username: currentUser,
-    text: text || (pendingAttachment?.name || 'Ek paylasildi'),
-    attachment: pendingAttachment
+    text: outgoingText,
+    attachment: outgoingAttachment,
+    clientId
   }));
   messageInput.value = '';
   pendingAttachment = null;

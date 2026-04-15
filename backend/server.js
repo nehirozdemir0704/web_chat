@@ -1582,12 +1582,12 @@ wss.on('connection', (ws) => {
       }
 
       if (user.banned) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Banned user cannot send messages.' }));
+        ws.send(JSON.stringify({ type: 'error', message: 'Banned user cannot send messages.', clientId: data.clientId }));
         return;
       }
 
       if (user.mutedUntil && user.mutedUntil > now()) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Bu kullanici su anda mute durumunda.' }));
+        ws.send(JSON.stringify({ type: 'error', message: 'Bu kullanici su anda mute durumunda.', clientId: data.clientId }));
         return;
       }
 
@@ -1613,7 +1613,8 @@ wss.on('connection', (ws) => {
         text: data.text,
         time: now(),
         reactions: {},
-        attachment: data.attachment || null
+        attachment: data.attachment || null,
+        clientId: data.clientId || null
       };
 
       if (!state.messages[data.channelId]) {
@@ -1636,7 +1637,7 @@ wss.on('connection', (ws) => {
       }
 
       if (areUsersBlocked(data.username, data.peerUsername)) {
-        ws.send(JSON.stringify({ type: 'error', message: 'Bu kullanici ile direkt mesajlasma engellendi.' }));
+        ws.send(JSON.stringify({ type: 'error', message: 'Bu kullanici ile direkt mesajlasma engellendi.', clientId: data.clientId }));
         return;
       }
 
@@ -1648,7 +1649,8 @@ wss.on('connection', (ws) => {
         time: now(),
         reactions: {},
         seenBy: [data.username],
-        attachment: data.attachment || null
+        attachment: data.attachment || null,
+        clientId: data.clientId || null
       };
 
       state.directMessages[dmKey] = state.directMessages[dmKey] || [];
