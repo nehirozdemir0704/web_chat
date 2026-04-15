@@ -15,3 +15,9 @@ services:
         fromDatabase:
           name: web-chat-db
           property: connectionString
+      - key: PUBLIC_URL
+        value: https://web-chat-community.onrender.com
+      - key: RESEND_API_KEY
+        sync: false
+      - key: MAIL_FROM
+        sync: false

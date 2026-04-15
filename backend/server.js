@@ -46,6 +46,10 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function resetCodeHash(code) {
+  return crypto.createHash('sha256').update(String(code)).digest('hex');
+}
+
 function ensureDataDir() {
   if (!fs.existsSync(DATA_DIR)) {
     fs.mkdirSync(DATA_DIR, { recursive: true });
@@ -317,7 +321,7 @@ function publicBaseUrl(req) {
   return `${proto}://${req.get('host')}`;
 }
 
-async function sendPasswordResetEmail(email, resetUrl, username) {
+async function sendPasswordResetEmail(email, resetUrl, username, resetCode) {
   if (process.env.RESEND_API_KEY && process.env.MAIL_FROM) {
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
@@ -331,8 +335,10 @@ async function sendPasswordResetEmail(email, resetUrl, username) {
         subject: 'Topluluk Sunucusu sifre sifirlama',
         html: `
           <p>Merhaba ${username},</p>
-          <p>Sifreni yenilemek icin asagidaki baglantiya tikla. Bu baglanti 30 dakika gecerlidir.</p>
+          <p>Sifreni yenilemek icin asagidaki kodu kullanabilir veya baglantiya tiklayabilirsin.</p>
+          <p><strong style="font-size: 24px; letter-spacing: 4px;">${resetCode}</strong></p>
           <p><a href="${resetUrl}">Sifremi sifirla</a></p>
+          <p>Bu kod ve baglanti 30 dakika gecerlidir.</p>
           <p>Bu istegi sen yapmadiysan bu e-postayi yok sayabilirsin.</p>
         `
       })
@@ -849,40 +855,64 @@ app.post('/api/password-reset/request', async (req, res) => {
   }
 
   const token = crypto.randomBytes(32).toString('hex');
+  const resetCode = String(Math.floor(100000 + Math.random() * 900000));
   const expiresAt = now() + 30 * 60 * 1000;
   state.passwordResetTokens = (state.passwordResetTokens || [])
     .filter((item) => item.username !== username && item.expiresAt > now());
-  state.passwordResetTokens.push({ token, username, expiresAt, used: false, createdAt: now() });
+  state.passwordResetTokens.push({
+    token,
+    codeHash: resetCodeHash(resetCode),
+    username,
+    expiresAt,
+    used: false,
+    createdAt: now()
+  });
 
   const resetUrl = `${publicBaseUrl(req)}?resetToken=${encodeURIComponent(token)}`;
-  const mailSent = await sendPasswordResetEmail(email, resetUrl, username).catch((error) => {
+  const mailSent = await sendPasswordResetEmail(email, resetUrl, username, resetCode).catch((error) => {
     console.error('Password reset email failed:', error.message);
     return false;
   });
 
   saveState();
-  return res.json({
-    ...genericResponse,
-    mailSent,
-    resetUrl: mailSent ? null : resetUrl
-  });
+  if (!mailSent) {
+    return res.status(503).json({
+      error: 'Mail servisi henuz ayarli degil. Render ortam degiskenlerine RESEND_API_KEY ve MAIL_FROM eklenmeli.'
+    });
+  }
+
+  return res.json({ ...genericResponse, mailSent: true });
 });
 
 app.post('/api/password-reset/confirm', (req, res) => {
   const token = typeof req.body.token === 'string' ? req.body.token.trim() : '';
+  const username = req.body.username?.trim();
+  const email = normalizeEmail(req.body.email);
+  const code = typeof req.body.code === 'string' ? req.body.code.trim() : '';
   const password = req.body.password;
 
-  if (!token || !password) {
-    return res.status(400).json({ error: 'Sifirlama kodu ve yeni sifre gerekli.' });
+  if ((!token && (!username || !email || !code)) || !password) {
+    return res.status(400).json({ error: 'Sifirlama baglantisi veya kodu ve yeni sifre gerekli.' });
   }
 
   if (password.length < 3) {
     return res.status(400).json({ error: 'Sifre en az 3 karakter olmali.' });
   }
 
-  const resetItem = (state.passwordResetTokens || []).find((item) => item.token === token && !item.used);
+  const resetItem = (state.passwordResetTokens || []).find((item) => {
+    if (item.used || item.expiresAt < now()) {
+      return false;
+    }
+    if (token) {
+      return item.token === token;
+    }
+    const user = getUser(item.username);
+    return item.username === username
+      && normalizeEmail(user?.email) === email
+      && item.codeHash === resetCodeHash(code);
+  });
   if (!resetItem || resetItem.expiresAt < now()) {
-    return res.status(400).json({ error: 'Sifirlama baglantisi gecersiz veya suresi dolmus.' });
+    return res.status(400).json({ error: 'Sifirlama baglantisi/kodu gecersiz veya suresi dolmus.' });
   }
 
   const user = getUser(resetItem.username);

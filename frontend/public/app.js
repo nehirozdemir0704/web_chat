@@ -2136,7 +2136,7 @@ function showForgotPassword() {
     <div class="auth-sparkle">Sifre Kurtarma</div>
     <div class="auth-caption">
       <strong>Hesabini geri al</strong>
-      Kullanici adin ve e-postan eslesirse kurtarma baglantisi olusturulur.
+      Kullanici adin ve e-postan eslesirse mailine kod ve baglanti gonderilir.
     </div>
     <h2>Sifremi Unuttum</h2>
     <p class="modal-copy">Kayit olurken kullandigin kullanici adi ve e-posta adresini gir.</p>
@@ -2158,25 +2158,17 @@ function showForgotPassword() {
       showModal(`
         <div class="auth-sparkle">Kontrol Et</div>
         <div class="auth-caption">
-          <strong>E-posta gonderimi hazir</strong>
-          Baglanti 30 dakika gecerlidir.
+          <strong>E-postani kontrol et</strong>
+          Kod ve sifirlama baglantisi 30 dakika gecerlidir.
         </div>
-        <h2>Kurtarma Baglantisi</h2>
+        <h2>Kurtarma Maili Gonderildi</h2>
         <p class="modal-copy">${escapeHtml(data.message || 'Bilgiler eslesiyorsa sifre sifirlama baglantisi e-postana gonderildi.')}</p>
-        ${data.resetUrl ? `
-          <p class="modal-copy">Mail servisi ayarli olmadigi icin test baglantisi burada gorunuyor:</p>
-          <input id="devResetUrl" class="modal-input" value="${escapeHtml(data.resetUrl)}" readonly />
-          <button id="openDevReset" class="modal-btn primary">Bu Baglanti Ile Devam Et</button>
-        ` : ''}
+        <p class="modal-copy">Maildeki baglantiya tiklayabilir veya gelen 6 haneli kodu burada kullanabilirsin.</p>
+        <button id="showResetWithCode" class="modal-btn primary">Kod ile Sifremi Yenile</button>
         <button id="resetDoneLogin" class="modal-btn secondary">Giris Ekranina Don</button>
       `, 'auth');
 
-      const openDevReset = document.getElementById('openDevReset');
-      if (openDevReset && data.resetUrl) {
-        openDevReset.onclick = () => {
-          location.href = data.resetUrl;
-        };
-      }
+      document.getElementById('showResetWithCode').onclick = () => showResetPassword(null, { username, email });
       document.getElementById('resetDoneLogin').onclick = showLogin;
     } catch (error) {
       alert(error.message);
@@ -2186,7 +2178,7 @@ function showForgotPassword() {
   document.getElementById('resetBackLogin').onclick = showLogin;
 }
 
-function showResetPassword(token) {
+function showResetPassword(token, account = {}) {
   showModal(`
     <div class="auth-sparkle">Yeni Sifre</div>
     <div class="auth-caption">
@@ -2194,7 +2186,12 @@ function showResetPassword(token) {
       Hesabin icin yeni sifreni belirle.
     </div>
     <h2>Sifreyi Yenile</h2>
-    <p class="modal-copy">Yeni sifreni yaz ve kaydet.</p>
+    <p class="modal-copy">${token ? 'Maildeki baglanti dogrulandi. Yeni sifreni yaz.' : 'Mailine gelen 6 haneli kodu ve yeni sifreni yaz.'}</p>
+    ${token ? '' : `
+      <input id="codeResetUser" class="modal-input" placeholder="Kullanici adi" value="${escapeHtml(account.username || '')}" />
+      <input id="codeResetEmail" class="modal-input" type="email" placeholder="E-posta adresi" value="${escapeHtml(account.email || '')}" />
+      <input id="resetCode" class="modal-input" inputmode="numeric" maxlength="6" placeholder="6 haneli kod" />
+    `}
     <input id="newResetPass" class="modal-input" type="password" placeholder="Yeni sifre" />
     <input id="newResetPassAgain" class="modal-input" type="password" placeholder="Yeni sifre tekrar" />
     <button id="confirmResetSubmit" class="modal-btn primary">Sifreyi Guncelle</button>
@@ -2211,7 +2208,13 @@ function showResetPassword(token) {
       }
       await request(API.passwordResetConfirm, {
         method: 'POST',
-        body: JSON.stringify({ token, password })
+        body: JSON.stringify({
+          token,
+          username: token ? null : document.getElementById('codeResetUser').value.trim(),
+          email: token ? null : document.getElementById('codeResetEmail').value.trim(),
+          code: token ? null : document.getElementById('resetCode').value.trim(),
+          password
+        })
       });
       history.replaceState(null, '', location.pathname);
       alert('Sifren guncellendi. Yeni sifrenle giris yapabilirsin.');
