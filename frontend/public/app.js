@@ -958,6 +958,55 @@ function streamHasAnyVideoTrack(stream) {
   return Boolean(stream?.getVideoTracks().length);
 }
 
+function buildPreferredMediaConstraints() {
+  const mobile = isMobileLayout();
+  return {
+    video: {
+      facingMode: 'user',
+      width: { ideal: mobile ? 480 : 640, max: mobile ? 640 : 960 },
+      height: { ideal: mobile ? 854 : 360, max: mobile ? 960 : 540 },
+      frameRate: { ideal: mobile ? 12 : 15, max: mobile ? 15 : 20 }
+    },
+    audio: {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true
+    }
+  };
+}
+
+async function optimizeLocalVideoTrack(stream) {
+  const track = stream?.getVideoTracks?.()[0];
+  if (!track?.applyConstraints) {
+    return;
+  }
+  try {
+    await track.applyConstraints(buildPreferredMediaConstraints().video);
+  } catch {
+    // Keep the stream if the browser rejects advanced constraints.
+  }
+}
+
+async function tuneSenderForStability(sender) {
+  if (!sender?.track || sender.track.kind !== 'video' || !sender.getParameters || !sender.setParameters) {
+    return;
+  }
+  try {
+    const params = sender.getParameters() || {};
+    params.encodings = params.encodings?.length ? params.encodings : [{}];
+    params.encodings = params.encodings.map((encoding) => ({
+      ...encoding,
+      maxBitrate: isMobileLayout() ? 280000 : 450000,
+      maxFramerate: isMobileLayout() ? 12 : 15,
+      scaleResolutionDownBy: 1
+    }));
+    params.degradationPreference = 'maintain-framerate';
+    await sender.setParameters(params);
+  } catch {
+    // Some browsers reject sender tuning; keep default transport settings.
+  }
+}
+
 function isPeerConnected(pc) {
   return ['connected', 'completed'].includes(pc?.iceConnectionState) || ['connected', 'completed'].includes(pc?.connectionState);
 }
@@ -1218,7 +1267,10 @@ function createPeerConnection(peerUsername) {
   });
 
   if (localStream) {
-    localStream.getTracks().forEach((track) => pc.addTrack(track, localStream));
+    localStream.getTracks().forEach((track) => {
+      const sender = pc.addTrack(track, localStream);
+      tuneSenderForStability(sender);
+    });
   }
 
   pc.onicecandidate = (event) => {
@@ -1316,16 +1368,18 @@ async function ensureLocalMedia() {
     throw new Error('Goruntulu konusma icin guvenli baglanti gerekli. localhost veya HTTPS kullan.');
   }
 
+  const preferredMedia = buildPreferredMediaConstraints();
   const attempts = [
-    { video: true, audio: true, label: '' },
-    { video: true, audio: false, label: 'Mikrofon izni olmadigi icin sadece kamera acildi.' },
-    { video: false, audio: true, label: 'Kamera izni olmadigi icin sadece mikrofon acildi.' }
+    { video: preferredMedia.video, audio: preferredMedia.audio, label: '' },
+    { video: preferredMedia.video, audio: false, label: 'Mikrofon izni olmadigi icin sadece kamera acildi.' },
+    { video: false, audio: preferredMedia.audio, label: 'Kamera izni olmadigi icin sadece mikrofon acildi.' }
   ];
 
   let lastError = null;
   for (const attempt of attempts) {
     try {
       localStream = await navigator.mediaDevices.getUserMedia(attempt);
+      await optimizeLocalVideoTrack(localStream);
       micEnabled = Boolean(localStream.getAudioTracks().length);
       cameraEnabled = Boolean(localStream.getVideoTracks().length);
       lastCallCapabilityMessage = attempt.label;
