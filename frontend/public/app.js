@@ -878,6 +878,9 @@ function schedulePeerReconnect(username, delay = 2200) {
     if (!localStream || !activeCallChannelId) {
       return;
     }
+    if (!shouldInitiatePeerOffer(username)) {
+      return;
+    }
     const participants = appState.callPresence[activeCallChannelId] || [];
     if (!participants.includes(username)) {
       return;
@@ -956,6 +959,10 @@ function streamHasLiveVideo(stream) {
 
 function streamHasAnyVideoTrack(stream) {
   return Boolean(stream?.getVideoTracks().length);
+}
+
+function shouldInitiatePeerOffer(peerUsername) {
+  return currentUser.localeCompare(peerUsername, 'tr', { sensitivity: 'base' }) < 0;
 }
 
 function buildPreferredMediaConstraints() {
@@ -1081,6 +1088,9 @@ function syncCallPeerConnections(participants = []) {
 
   peerSet.forEach((peerUsername) => {
     const pc = peerConnections.get(peerUsername);
+    if (!shouldInitiatePeerOffer(peerUsername)) {
+      return;
+    }
     if (!pc) {
       initiateOffer(peerUsername).catch(() => showToast('Video baglantisi baslatilamadi.'));
       return;
