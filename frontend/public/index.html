@@ -1359,15 +1359,21 @@
       }
 
       .mobile-quickbar {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
+        display: flex;
         gap: 8px;
-        padding: 8px 12px;
+        padding: 8px 12px 10px;
         border-bottom: 1px solid var(--line);
         background: var(--panel);
         position: relative;
         z-index: 0;
         flex: 0 0 auto;
+        overflow-x: auto;
+        overflow-y: hidden;
+        scrollbar-width: none;
+      }
+
+      .mobile-quickbar::-webkit-scrollbar {
+        display: none;
       }
 
       .mobile-quick-btn {
@@ -1375,14 +1381,18 @@
         background: var(--soft-surface);
         color: var(--text);
         border-radius: 12px;
-        min-height: 40px;
-        padding: 8px 6px;
-        font-size: 11px;
+        min-height: 34px;
+        min-width: max-content;
+        padding: 7px 12px;
+        font-size: 10px;
         font-weight: 700;
-        display: grid;
-        place-items: center;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
         text-align: center;
-        gap: 2px;
+        gap: 0;
+        flex: 0 0 auto;
+        white-space: nowrap;
       }
 
       .mobile-quick-btn.primary {
@@ -1392,7 +1402,7 @@
       }
 
       .chat-area {
-        padding: 6px 0 10px;
+        padding: 12px 0 10px;
       }
 
       .message-row {
