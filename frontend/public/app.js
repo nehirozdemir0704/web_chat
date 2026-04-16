@@ -54,6 +54,7 @@ const speakingMeters = new Map();
 const peerConnections = new Map();
 const remoteStreams = new Map();
 const peerDisconnectTimers = new Map();
+const peerReconnectTimers = new Map();
 const peerOfferState = new Map();
 const pendingIceCandidates = new Map();
 const makingOffers = new Set();
@@ -837,6 +838,11 @@ function closePeerConnection(username) {
     clearTimeout(disconnectTimer);
     peerDisconnectTimers.delete(username);
   }
+  const reconnectTimer = peerReconnectTimers.get(username);
+  if (reconnectTimer) {
+    clearTimeout(reconnectTimer);
+    peerReconnectTimers.delete(username);
+  }
   const pc = peerConnections.get(username);
   if (pc) {
     pc.close();
@@ -860,6 +866,30 @@ function schedulePeerDisconnect(username) {
     renderVideoPanel();
   }, 6000);
   peerDisconnectTimers.set(username, timeout);
+}
+
+function schedulePeerReconnect(username, delay = 2200) {
+  const existing = peerReconnectTimers.get(username);
+  if (existing) {
+    clearTimeout(existing);
+  }
+  const timeout = setTimeout(() => {
+    peerReconnectTimers.delete(username);
+    if (!localStream || !activeCallChannelId) {
+      return;
+    }
+    const participants = appState.callPresence[activeCallChannelId] || [];
+    if (!participants.includes(username)) {
+      return;
+    }
+    const currentPc = peerConnections.get(username);
+    if (currentPc && isPeerConnected(currentPc)) {
+      return;
+    }
+    closePeerConnection(username);
+    initiateOffer(username).catch(() => showToast('Video baglantisi yeniden kuruluyor...'));
+  }, delay);
+  peerReconnectTimers.set(username, timeout);
 }
 
 function clearPeerDisconnect(username) {
@@ -900,6 +930,10 @@ function attachStreamToVideo(element, stream, muted = false) {
   }
 }
 
+function streamHasLiveVideo(stream) {
+  return Boolean(stream?.getVideoTracks().some((track) => track.readyState === 'live' && track.enabled));
+}
+
 function isPeerConnected(pc) {
   return ['connected', 'completed'].includes(pc?.iceConnectionState) || ['connected', 'completed'].includes(pc?.connectionState);
 }
@@ -933,6 +967,66 @@ function cleanupCallUi() {
   renderVideoPanel();
 }
 
+function teardownLocalCall({ closePanel = true, toastMessage = '' } = {}) {
+  stopLocalMedia();
+  activeCallChannelId = null;
+  cleanupCallUi();
+  if (closePanel) {
+    closeCallPanel();
+  }
+  if (toastMessage) {
+    showToast(toastMessage);
+  }
+}
+
+function syncCallMembership() {
+  if (!activeCallChannelId) {
+    return;
+  }
+  const participants = appState.callPresence[activeCallChannelId] || [];
+  const stillInVoiceRoom = currentVoiceChannelId === activeCallChannelId;
+  if (!participants.includes(currentUser) || !stillInVoiceRoom) {
+    teardownLocalCall({
+      closePanel: true,
+      toastMessage: 'Sesli odadan ayrildigin icin goruntulu konusma kapatildi.'
+    });
+  }
+}
+
+function syncCallPeerConnections(participants = []) {
+  const peerSet = new Set(participants.filter((username) => username !== currentUser));
+
+  [...peerConnections.keys()].forEach((username) => {
+    if (!peerSet.has(username)) {
+      closePeerConnection(username);
+    }
+  });
+
+  if (!localStream || !activeCallChannelId) {
+    return;
+  }
+
+  peerSet.forEach((peerUsername) => {
+    const pc = peerConnections.get(peerUsername);
+    if (!pc) {
+      initiateOffer(peerUsername).catch(() => showToast('Video baglantisi baslatilamadi.'));
+      return;
+    }
+
+    if (isPeerConnected(pc)) {
+      return;
+    }
+
+    const signalingBusy = pc.signalingState !== 'stable';
+    const connectionTrying = ['new', 'connecting'].includes(pc.connectionState)
+      || ['new', 'checking', 'connected', 'completed'].includes(pc.iceConnectionState);
+
+    if (!signalingBusy && !connectionTrying) {
+      schedulePeerReconnect(peerUsername, 160);
+    }
+  });
+}
+
 function openCallPanel() {
   activeCallChannelId = getPreferredCallChannelId();
   callOverlay.classList.remove('hidden');
@@ -951,11 +1045,12 @@ function renderVideoPanel() {
   const participants = appState.callPresence[displayCallChannelId || currentChannelId] || [];
   const hasCall = Boolean(localStream || participants.length || remoteStreams.size);
   const hasAudioTrack = Boolean(localStream?.getAudioTracks().length);
-  const hasVideoTrack = Boolean(localStream?.getVideoTracks().length);
+  const hasVideoTrack = streamHasLiveVideo(localStream);
   const callChannel = getCurrentServer()?.categories
     .flatMap((category) => category.channels)
     .find((channel) => channel.id === (displayCallChannelId || currentChannelId));
-  const cameraCount = Number(Boolean(localStream?.getVideoTracks().length)) + remoteStreams.size;
+  const liveRemoteVideoCount = [...remoteStreams.values()].filter(streamHasLiveVideo).length;
+  const cameraCount = Number(hasVideoTrack) + liveRemoteVideoCount;
   const micCount = Number(Boolean(localStream?.getAudioTracks().length)) + participants.filter((username) => username !== currentUser).length;
 
   callTitle.textContent = `Voice / ${callChannel?.name || 'sesli oda'}`;
@@ -995,17 +1090,28 @@ function renderVideoPanel() {
 
   const cards = [];
   const remoteParticipantNames = participants.filter((username) => username !== currentUser);
-  if (localStream) {
+  if (localStream && hasVideoTrack) {
     cards.push(`
       <div class="video-card ${isUserSpeaking(currentUser) ? 'speaking' : ''}">
         <video id="localVideo" autoplay muted playsinline></video>
         <div class="video-label">Sen ${isUserSpeaking(currentUser) ? '• konusuyor' : ''}</div>
       </div>
     `);
+  } else if (localStream) {
+    cards.push(`
+      <div class="video-card placeholder">
+        <div class="video-label">
+          ${avatarMarkup(currentUser, 'member-avatar')}
+          <span>Sen</span>
+          <small>Kameran kapali veya yeniden baglaniyor</small>
+        </div>
+      </div>
+    `);
   }
 
   remoteParticipantNames.forEach((username) => {
-    if (remoteStreams.has(username)) {
+    const remoteStream = remoteStreams.get(username);
+    if (remoteStream && streamHasLiveVideo(remoteStream)) {
       cards.push(`
         <div class="video-card ${isUserSpeaking(username) ? 'speaking' : ''}">
           <video id="remoteVideo_${username}" autoplay playsinline></video>
@@ -1020,15 +1126,15 @@ function renderVideoPanel() {
         <div class="video-label">
           ${avatarMarkup(username, 'member-avatar')}
           <span>${escapeHtml(username)}</span>
-          <small>Sadece ses veya kamera kapali</small>
+          <small>Kamera kapali veya baglanti yenileniyor</small>
         </div>
       </div>
     `);
     return;
   });
 
-  for (const [username] of remoteStreams.entries()) {
-    if (remoteParticipantNames.includes(username)) {
+  for (const [username, stream] of remoteStreams.entries()) {
+    if (remoteParticipantNames.includes(username) || !streamHasLiveVideo(stream)) {
       continue;
     }
     cards.push(`
@@ -1112,6 +1218,11 @@ function createPeerConnection(peerUsername) {
   pc.onconnectionstatechange = () => {
     if (['connecting', 'connected', 'completed'].includes(pc.connectionState)) {
       clearPeerDisconnect(peerUsername);
+      const reconnectTimer = peerReconnectTimers.get(peerUsername);
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        peerReconnectTimers.delete(peerUsername);
+      }
       if (['connected', 'completed'].includes(pc.connectionState)) {
         peerOfferState.set(peerUsername, 'connected');
       }
@@ -1119,21 +1230,40 @@ function createPeerConnection(peerUsername) {
     }
     if (pc.connectionState === 'disconnected') {
       schedulePeerDisconnect(peerUsername);
+      schedulePeerReconnect(peerUsername, 1200);
       return;
     }
-    if (['failed', 'closed'].includes(pc.connectionState)) {
+    if (pc.connectionState === 'failed') {
+      schedulePeerReconnect(peerUsername, 300);
+      return;
+    }
+    if (pc.connectionState === 'closed') {
       closePeerConnection(peerUsername);
       renderVideoPanel();
     }
   };
 
   pc.oniceconnectionstatechange = () => {
+    if (['connected', 'completed'].includes(pc.iceConnectionState)) {
+      clearPeerDisconnect(peerUsername);
+      const reconnectTimer = peerReconnectTimers.get(peerUsername);
+      if (reconnectTimer) {
+        clearTimeout(reconnectTimer);
+        peerReconnectTimers.delete(peerUsername);
+      }
+      return;
+    }
+    if (pc.iceConnectionState === 'disconnected') {
+      schedulePeerDisconnect(peerUsername);
+      schedulePeerReconnect(peerUsername, 1200);
+      return;
+    }
     if (pc.iceConnectionState === 'failed') {
       try {
         pc.restartIce();
+        schedulePeerReconnect(peerUsername, 1200);
       } catch {
-        closePeerConnection(peerUsername);
-        renderVideoPanel();
+        schedulePeerReconnect(peerUsername, 300);
       }
     }
   };
@@ -2004,6 +2134,9 @@ function renderTypingIndicator() {
 }
 
 function switchServer(serverId) {
+  if (activeCallChannelId) {
+    endVideoCall({ closePanel: true, toastMessage: 'Sunucu degistirdigin icin goruntulu konusma kapatildi.' });
+  }
   currentServerId = serverId;
   const server = getCurrentServer();
   const firstChannel = server?.categories[0]?.channels[0];
@@ -2075,6 +2208,22 @@ function connectWS() {
         username: currentUser,
         serverId: currentServerId,
         channelId: currentChannelId
+      }));
+    }
+    if (currentVoiceChannelId) {
+      ws.send(JSON.stringify({
+        type: 'joinVoice',
+        username: currentUser,
+        serverId: currentServerId,
+        channelId: currentVoiceChannelId
+      }));
+    }
+    if (activeCallChannelId && localStream) {
+      ws.send(JSON.stringify({
+        type: 'joinCall',
+        username: currentUser,
+        serverId: currentServerId,
+        channelId: activeCallChannelId
       }));
     }
   };
@@ -2183,6 +2332,7 @@ function connectWS() {
         showBrowserNotification('Yeni arkadaslik istegi', 'Istekler panelinden kabul edebilirsin.');
       }
       currentVoiceChannelId = appState.presence[currentUser]?.voiceChannelId || null;
+      syncCallMembership();
       renderMembers();
       renderDmList();
       renderVoicePanel();
@@ -2207,6 +2357,7 @@ function connectWS() {
       appState.callPresence = data.callPresence || {};
       appState.typingState = data.typingState || {};
       currentVoiceChannelId = appState.presence[currentUser]?.voiceChannelId || null;
+      syncCallMembership();
       renderAll();
       return;
     }
@@ -2248,16 +2399,7 @@ function connectWS() {
         );
       }
       renderVideoPanel();
-      const peers = (data.participants || []).filter((username) => username !== currentUser);
-      peers.forEach((peerUsername) => {
-        const pc = peerConnections.get(peerUsername);
-        const shouldCreateOffer = !pc
-          || ['closed', 'failed'].includes(pc.connectionState)
-          || (pc.signalingState === 'stable' && !isPeerConnected(pc) && !peerOfferState.get(peerUsername));
-        if (localStream && shouldCreateOffer) {
-          initiateOffer(peerUsername).catch(() => showToast('Video baglantisi baslatilamadi.'));
-        }
-      });
+      syncCallPeerConnections(data.participants || []);
       return;
     }
 
@@ -2266,7 +2408,8 @@ function connectWS() {
         appState.callPresence[data.channelId] = appState.callPresence[data.channelId].filter((item) => item !== data.username);
       }
       if (data.username === currentUser) {
-        activeCallChannelId = null;
+        teardownLocalCall();
+        return;
       }
       closePeerConnection(data.username);
       renderVideoPanel();
@@ -2912,6 +3055,12 @@ function toggleVoice() {
   }
 
   if (currentVoiceChannelId) {
+    if (activeCallChannelId && activeCallChannelId === currentVoiceChannelId) {
+      endVideoCall({
+        closePanel: true,
+        toastMessage: 'Sesli odadan ayrildigin icin goruntulu konusma kapatildi.'
+      });
+    }
     ws.send(JSON.stringify({
       type: 'leaveVoice',
       username: currentUser,
@@ -2991,7 +3140,8 @@ function stopLocalMedia() {
   stopSpeakingMonitor(currentUser);
 }
 
-function endVideoCall() {
+function endVideoCall(options = {}) {
+  const { closePanel = true, toastMessage = 'Goruntulu konusma sonlandirildi.' } = options;
   if (!activeCallChannelId && !localStream) {
     return;
   }
@@ -3001,11 +3151,7 @@ function endVideoCall() {
     username: currentUser,
     channelId: activeCallChannelId || currentChannelId
   }));
-  stopLocalMedia();
-  activeCallChannelId = null;
-  cleanupCallUi();
-  closeCallPanel();
-  showToast('Goruntulu konusma sonlandirildi.');
+  teardownLocalCall({ closePanel, toastMessage });
 }
 
 function toggleMic() {

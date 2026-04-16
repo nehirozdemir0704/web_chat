@@ -1422,12 +1422,18 @@ function getWsByUsername(username) {
 }
 
 function removeUserFromCalls(username) {
+  const removedChannelIds = [];
   Object.keys(callPresence).forEach((channelId) => {
+    const hadUser = (callPresence[channelId] || []).includes(username);
     callPresence[channelId] = (callPresence[channelId] || []).filter((item) => item !== username);
+    if (hadUser) {
+      removedChannelIds.push(channelId);
+    }
     if (!callPresence[channelId].length) {
       delete callPresence[channelId];
     }
   });
+  return removedChannelIds;
 }
 
 function getLocalIpAddress() {
@@ -1539,6 +1545,18 @@ wss.on('connection', (ws) => {
 
     if (data.type === 'leaveVoice') {
       removeUserFromVoice(data.username);
+      const info = wsClients.get(ws) || { username: data.username };
+      const removedCallChannelIds = removeUserFromCalls(data.username);
+      if (removedCallChannelIds.length) {
+        info.currentCallChannelId = null;
+        wsClients.set(ws, info);
+        removedCallChannelIds.forEach((channelId) => {
+          broadcast('callLeft', {
+            username: data.username,
+            channelId
+          });
+        });
+      }
       saveState();
       if (data.serverId) {
         broadcastServer(data.serverId);
