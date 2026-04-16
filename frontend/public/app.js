@@ -140,6 +140,7 @@ let currentTheme = localStorage.getItem('community-theme') || 'dark';
 let micEnabled = true;
 let cameraEnabled = true;
 let lastSeenMarkers = {};
+let lastMobileQuickActionOpen = 0;
 
 function isMobileLayout() {
   return window.matchMedia('(max-width: 860px)').matches;
@@ -3199,6 +3200,12 @@ function openQuickActionsFromMobile(event) {
   event?.preventDefault?.();
   event?.stopPropagation?.();
 
+  const now = Date.now();
+  if (now - lastMobileQuickActionOpen < 350) {
+    return;
+  }
+  lastMobileQuickActionOpen = now;
+
   closeMobilePanels();
   window.setTimeout(() => {
     openQuickActions();
@@ -3368,6 +3375,8 @@ window.onload = () => {
     toggleMembersPanel();
   };
   mobileActionsBtn.onclick = openQuickActionsFromMobile;
+  mobileActionsBtn.onpointerup = openQuickActionsFromMobile;
+  mobileActionsBtn.ontouchend = openQuickActionsFromMobile;
   attachmentInput.onchange = () => {
     const file = attachmentInput.files?.[0];
     if (!file) {
