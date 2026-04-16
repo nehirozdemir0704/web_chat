@@ -901,6 +901,13 @@ function clearPeerDisconnect(username) {
 }
 
 function upsertRemoteStream(username, incomingStream) {
+  if (!incomingStream) {
+    const fallbackStream = remoteStreams.get(username) || null;
+    if (fallbackStream) {
+      remoteStreams.set(username, fallbackStream);
+    }
+    return fallbackStream;
+  }
   const existingStream = remoteStreams.get(username);
   if (!existingStream) {
     remoteStreams.set(username, incomingStream);
@@ -914,6 +921,19 @@ function upsertRemoteStream(username, incomingStream) {
   });
   remoteStreams.set(username, existingStream);
   return existingStream;
+}
+
+function createRemoteStreamFromEvent(username, event) {
+  const eventStream = event?.streams?.[0];
+  if (eventStream) {
+    return upsertRemoteStream(username, eventStream);
+  }
+
+  const existingStream = remoteStreams.get(username) || new MediaStream();
+  if (event?.track && !existingStream.getTracks().some((track) => track.id === event.track.id)) {
+    existingStream.addTrack(event.track);
+  }
+  return upsertRemoteStream(username, existingStream);
 }
 
 function attachStreamToVideo(element, stream, muted = false) {
@@ -1210,8 +1230,15 @@ function createPeerConnection(peerUsername) {
   };
 
   pc.ontrack = (event) => {
-    const stream = upsertRemoteStream(peerUsername, event.streams[0]);
-    startSpeakingMonitor(stream, peerUsername);
+    const stream = createRemoteStreamFromEvent(peerUsername, event);
+    if (stream) {
+      startSpeakingMonitor(stream, peerUsername);
+    }
+    if (event.track) {
+      event.track.onunmute = () => renderVideoPanel();
+      event.track.onmute = () => renderVideoPanel();
+      event.track.onended = () => renderVideoPanel();
+    }
     renderVideoPanel();
   };
 
