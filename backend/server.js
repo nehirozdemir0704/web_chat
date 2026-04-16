@@ -46,6 +46,41 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+async function fetchMeteredIceServers() {
+  const baseUrl = process.env.METERED_TURN_BASE_URL;
+  const apiKey = process.env.METERED_API_KEY;
+  if (!baseUrl || !apiKey) {
+    return [];
+  }
+
+  const ttl = Number(process.env.METERED_TURN_TTL || 86400);
+  const requestUrl = new URL('/api/v1/turn/credentials', baseUrl);
+  requestUrl.searchParams.set('apiKey', apiKey);
+  requestUrl.searchParams.set('ttl', String(Number.isFinite(ttl) && ttl > 0 ? ttl : 86400));
+
+  try {
+    const response = await fetch(requestUrl, {
+      headers: { Accept: 'application/json' }
+    });
+    if (!response.ok) {
+      return [];
+    }
+    const data = await response.json();
+    if (!Array.isArray(data)) {
+      return [];
+    }
+    return data
+      .filter((item) => item && item.urls)
+      .map((item) => ({
+        urls: item.urls,
+        username: item.username,
+        credential: item.credential
+      }));
+  } catch {
+    return [];
+  }
+}
+
 function resetCodeHash(code) {
   return crypto.createHash('sha256').update(String(code)).digest('hex');
 }
@@ -816,11 +851,16 @@ app.get('/healthz', (req, res) => {
   });
 });
 
-app.get('/api/rtc-config', (req, res) => {
+app.get('/api/rtc-config', async (req, res) => {
   const iceServers = [
     { urls: 'stun:stun.l.google.com:19302' },
     { urls: 'stun:stun1.l.google.com:19302' }
   ];
+
+  const meteredIceServers = await fetchMeteredIceServers();
+  if (meteredIceServers.length) {
+    return res.json({ iceServers: [...iceServers, ...meteredIceServers] });
+  }
 
   if (process.env.TURN_URL && process.env.TURN_USERNAME && process.env.TURN_CREDENTIAL) {
     iceServers.push({
