@@ -1020,7 +1020,7 @@ function renderVideoPanel() {
         <div class="video-label">
           ${avatarMarkup(username, 'member-avatar')}
           <span>${escapeHtml(username)}</span>
-          <small>Baglanti bekleniyor</small>
+          <small>Sadece ses veya kamera kapali</small>
         </div>
       </div>
     `);
