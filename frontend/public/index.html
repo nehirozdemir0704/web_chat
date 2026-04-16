@@ -1267,20 +1267,28 @@
         flex-direction: column;
         gap: 10px;
         backdrop-filter: blur(22px);
+        overscroll-behavior: contain;
+        -webkit-overflow-scrolling: touch;
       }
 
       .channels {
         left: 6px;
         transform: translateX(-112%);
         transition: transform 0.22s ease;
-        overflow-y: auto;
+        overflow: hidden;
+        display: grid;
+        grid-template-rows: auto auto auto minmax(0, 1fr) auto auto;
+        align-content: stretch;
       }
 
       .sidebar {
         right: 6px;
         transform: translateX(112%);
         transition: transform 0.22s ease;
-        overflow-y: auto;
+        overflow: hidden;
+        display: grid;
+        grid-template-rows: auto minmax(0, 1fr) auto auto auto;
+        align-content: start;
       }
 
       .channels.mobile-open,
@@ -1354,6 +1362,9 @@
         padding: 8px 12px;
         border-bottom: 1px solid var(--line);
         background: var(--panel);
+        position: sticky;
+        top: 0;
+        z-index: 3;
       }
 
       .mobile-quick-btn {
@@ -1477,6 +1488,7 @@
         min-height: 0;
         overflow: auto;
         padding-right: 2px;
+        padding-bottom: 4px;
       }
 
       .channels .channel-group {
@@ -1529,6 +1541,11 @@
 
       .sidebar .sidebar-panel:first-child {
         padding-bottom: 6px;
+      }
+
+      .sidebar .sidebar-panel:nth-child(2) {
+        min-height: 0;
+        overflow: hidden;
       }
 
       .sidebar .sidebar-panel:not(:first-child) {

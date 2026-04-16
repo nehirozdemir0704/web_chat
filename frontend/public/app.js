@@ -154,6 +154,7 @@ function closeMobilePanels() {
   channelsPanel.classList.remove('mobile-open');
   sidebar.classList.remove('mobile-open');
   updateMobileBackdrop();
+  renderMobileQuickbar();
 }
 
 function openMobilePanel(panel) {
@@ -164,12 +165,30 @@ function openMobilePanel(panel) {
   const openChannels = panel === 'channels';
   channelsPanel.classList.toggle('mobile-open', openChannels);
   sidebar.classList.toggle('mobile-open', !openChannels);
+  if (openChannels) {
+    channelsPanel.scrollTop = 0;
+  } else {
+    sidebar.scrollTop = 0;
+  }
   updateMobileBackdrop();
+  renderMobileQuickbar();
+}
+
+function renderMobileQuickbar() {
+  if (!mobileMenuBtn || !mobileVoiceBtn || !mobileMembersBtn || !mobileActionsBtn) {
+    return;
+  }
+
+  const inVoice = Boolean(currentVoiceChannelId);
+  mobileMenuBtn.textContent = channelsPanel.classList.contains('mobile-open') ? 'Kapat' : 'Menu';
+  mobileMembersBtn.textContent = sidebar.classList.contains('mobile-open') ? 'Kapat' : 'Uyeler';
+  mobileVoiceBtn.textContent = inVoice ? 'Sesten Ayril' : 'Ses Odasi';
+  mobileVoiceBtn.classList.toggle('primary', !inVoice);
 }
 
 function joinBestVoiceChannel() {
   if (currentVoiceChannelId) {
-    showToast('Zaten bir sesli odadasin.');
+    leaveVoice();
     return;
   }
 
@@ -1892,6 +1911,7 @@ function renderAll() {
   renderPermissions();
   renderVideoPanel();
   renderTypingIndicator();
+  renderMobileQuickbar();
 }
 
 function renderTypingIndicator() {
@@ -3322,10 +3342,25 @@ window.onload = () => {
     }
   };
   composerAddBtn.onclick = openQuickActions;
-  mobileMenuBtn.onclick = () => openMobilePanel('channels');
+  mobileMenuBtn.onclick = () => {
+    if (channelsPanel.classList.contains('mobile-open')) {
+      closeMobilePanels();
+      return;
+    }
+    openMobilePanel('channels');
+  };
   mobileVoiceBtn.onclick = joinBestVoiceChannel;
-  mobileMembersBtn.onclick = toggleMembersPanel;
-  mobileActionsBtn.onclick = openQuickActions;
+  mobileMembersBtn.onclick = () => {
+    if (sidebar.classList.contains('mobile-open')) {
+      closeMobilePanels();
+      return;
+    }
+    toggleMembersPanel();
+  };
+  mobileActionsBtn.onclick = () => {
+    closeMobilePanels();
+    openQuickActions();
+  };
   attachmentInput.onchange = () => {
     const file = attachmentInput.files?.[0];
     if (!file) {
