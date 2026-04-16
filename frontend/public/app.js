@@ -3195,6 +3195,16 @@ function openQuickActions() {
   };
 }
 
+function openQuickActionsFromMobile(event) {
+  event?.preventDefault?.();
+  event?.stopPropagation?.();
+
+  closeMobilePanels();
+  window.setTimeout(() => {
+    openQuickActions();
+  }, 0);
+}
+
 function toggleMembersPanel() {
   if (isMobileLayout()) {
     const willOpen = !sidebar.classList.contains('mobile-open');
@@ -3357,10 +3367,7 @@ window.onload = () => {
     }
     toggleMembersPanel();
   };
-  mobileActionsBtn.onclick = () => {
-    closeMobilePanels();
-    openQuickActions();
-  };
+  mobileActionsBtn.onclick = openQuickActionsFromMobile;
   attachmentInput.onchange = () => {
     const file = attachmentInput.files?.[0];
     if (!file) {
