@@ -2165,22 +2165,86 @@
 
     @media (max-width: 860px) {
       .call-overlay {
-        padding: 8px;
+        inset: 0;
+        padding: 0;
+        z-index: 140;
       }
 
       .call-shell {
         grid-template-columns: 1fr;
         grid-template-rows: minmax(0, 1fr) auto;
-        padding: 12px;
+        gap: 10px;
+        padding: 10px;
+        height: 100dvh;
+        border-radius: 0;
+        border: 0;
+      }
+
+      .call-main {
+        gap: 10px;
+      }
+
+      .call-header {
+        gap: 10px;
+      }
+
+      .call-header h2 {
+        font-size: 22px;
+      }
+
+      .call-header p,
+      .call-info-card p {
+        font-size: 12px;
+      }
+
+      .call-stage {
+        padding: 10px;
+        min-height: 46vh;
+        border-radius: 16px;
+      }
+
+      .call-stage .video-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .call-stage .video-card {
+        min-height: 220px;
+      }
+
+      .call-stage .video-card video {
+        min-height: 220px;
+      }
+
+      .call-empty {
+        min-height: 220px;
+        padding: 20px 12px;
+      }
+
+      .call-empty strong {
+        font-size: 20px;
+      }
+
+      .call-controls {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+      }
+
+      .call-soft-btn,
+      .call-primary-btn {
+        width: 100%;
+        justify-content: center;
+        min-height: 42px;
       }
 
       .call-side {
-        max-height: 28vh;
+        max-height: 24vh;
         overflow: auto;
+        padding-right: 2px;
       }
 
       .call-header,
-      .call-controls {
+      .call-header-actions {
         align-items: stretch;
         flex-direction: column;
       }
