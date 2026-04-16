@@ -181,10 +181,12 @@ function renderMobileQuickbar() {
   }
 
   const inVoice = Boolean(currentVoiceChannelId);
+  const activeUiCallChannelId = getPreferredCallChannelId();
+  const hasActiveCall = Boolean(activeUiCallChannelId && (appState.callPresence[activeUiCallChannelId] || []).length);
   mobileMenuBtn.textContent = channelsPanel.classList.contains('mobile-open') ? 'Kapat' : 'Menu';
   mobileMembersBtn.textContent = sidebar.classList.contains('mobile-open') ? 'Kapat' : 'Uyeler';
-  mobileVoiceBtn.textContent = inVoice ? 'Sesten Ayril' : 'Ses Odasi';
-  mobileVoiceBtn.classList.toggle('primary', !inVoice);
+  mobileVoiceBtn.textContent = hasActiveCall ? 'Cagri Ac' : (inVoice ? 'Sesten Ayril' : 'Ses Odasi');
+  mobileVoiceBtn.classList.toggle('primary', !inVoice || hasActiveCall);
 }
 
 function joinBestVoiceChannel() {
@@ -559,6 +561,31 @@ function getCurrentCallMembers() {
   return appState.callPresence[activeCallChannelId || currentChannelId] || [];
 }
 
+function getPreferredCallChannelId() {
+  if (activeCallChannelId && (appState.callPresence[activeCallChannelId] || []).length) {
+    return activeCallChannelId;
+  }
+
+  if (currentVoiceChannelId && (appState.callPresence[currentVoiceChannelId] || []).length) {
+    return currentVoiceChannelId;
+  }
+
+  const currentChannel = getCurrentChannel();
+  if (currentChannel?.kind === 'voice' && (appState.callPresence[currentChannel.id] || []).length) {
+    return currentChannel.id;
+  }
+
+  if (currentVoiceChannelId) {
+    return currentVoiceChannelId;
+  }
+
+  if (currentChannel?.kind === 'voice') {
+    return currentChannel.id;
+  }
+
+  return Object.keys(appState.callPresence).find((channelId) => (appState.callPresence[channelId] || []).length) || null;
+}
+
 function getActiveConversationMessages() {
   if (activeSidebarTab === 'dm' && activeDmUser) {
     return appState.directMessages[activeDmUser] || [];
@@ -907,6 +934,7 @@ function cleanupCallUi() {
 }
 
 function openCallPanel() {
+  activeCallChannelId = getPreferredCallChannelId();
   callOverlay.classList.remove('hidden');
   renderVideoPanel();
 }
@@ -916,13 +944,17 @@ function closeCallPanel() {
 }
 
 function renderVideoPanel() {
-  const participants = getCurrentCallMembers();
+  const displayCallChannelId = getPreferredCallChannelId();
+  if (displayCallChannelId) {
+    activeCallChannelId = displayCallChannelId;
+  }
+  const participants = appState.callPresence[displayCallChannelId || currentChannelId] || [];
   const hasCall = Boolean(localStream || participants.length || remoteStreams.size);
   const hasAudioTrack = Boolean(localStream?.getAudioTracks().length);
   const hasVideoTrack = Boolean(localStream?.getVideoTracks().length);
   const callChannel = getCurrentServer()?.categories
     .flatMap((category) => category.channels)
-    .find((channel) => channel.id === (activeCallChannelId || currentChannelId));
+    .find((channel) => channel.id === (displayCallChannelId || currentChannelId));
   const cameraCount = Number(Boolean(localStream?.getVideoTracks().length)) + remoteStreams.size;
   const micCount = Number(Boolean(localStream?.getAudioTracks().length)) + participants.filter((username) => username !== currentUser).length;
 
@@ -3419,6 +3451,11 @@ window.onload = () => {
   const handleMobileVoice = (event) => {
     event?.preventDefault?.();
     event?.stopPropagation?.();
+    const activeUiCallChannelId = getPreferredCallChannelId();
+    if (activeUiCallChannelId && (appState.callPresence[activeUiCallChannelId] || []).length) {
+      openCallPanel();
+      return;
+    }
     joinBestVoiceChannel();
   };
   const handleMobileMembers = (event) => {
