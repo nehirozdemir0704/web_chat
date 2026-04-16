@@ -951,7 +951,11 @@ function attachStreamToVideo(element, stream, muted = false) {
 }
 
 function streamHasLiveVideo(stream) {
-  return Boolean(stream?.getVideoTracks().some((track) => track.readyState === 'live' && track.enabled));
+  return Boolean(stream?.getVideoTracks().some((track) => track.readyState === 'live'));
+}
+
+function streamHasAnyVideoTrack(stream) {
+  return Boolean(stream?.getVideoTracks().length);
 }
 
 function isPeerConnected(pc) {
@@ -1131,7 +1135,7 @@ function renderVideoPanel() {
 
   remoteParticipantNames.forEach((username) => {
     const remoteStream = remoteStreams.get(username);
-    if (remoteStream && streamHasLiveVideo(remoteStream)) {
+    if (remoteStream && streamHasAnyVideoTrack(remoteStream)) {
       cards.push(`
         <div class="video-card ${isUserSpeaking(username) ? 'speaking' : ''}">
           <video id="remoteVideo_${username}" autoplay playsinline></video>
@@ -1154,7 +1158,7 @@ function renderVideoPanel() {
   });
 
   for (const [username, stream] of remoteStreams.entries()) {
-    if (remoteParticipantNames.includes(username) || !streamHasLiveVideo(stream)) {
+    if (remoteParticipantNames.includes(username) || !streamHasAnyVideoTrack(stream)) {
       continue;
     }
     cards.push(`
