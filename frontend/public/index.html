@@ -844,6 +844,7 @@
       align-items: center;
       justify-content: center;
       padding: 20px;
+      z-index: 120;
     }
 
     .modal {
@@ -852,6 +853,8 @@
       display: grid;
       gap: 12px;
       border-radius: 18px;
+      position: relative;
+      z-index: 121;
     }
 
     .modal-overlay.auth-overlay {
@@ -1362,9 +1365,9 @@
         padding: 8px 12px;
         border-bottom: 1px solid var(--line);
         background: var(--panel);
-        position: sticky;
-        top: 0;
-        z-index: 3;
+        position: relative;
+        z-index: 0;
+        flex: 0 0 auto;
       }
 
       .mobile-quick-btn {
