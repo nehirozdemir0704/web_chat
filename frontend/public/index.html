@@ -2091,6 +2091,20 @@
       align-items: stretch;
     }
 
+    .call-stage .video-grid.grid-1 {
+      grid-template-columns: 1fr;
+    }
+
+    .call-stage .video-grid.grid-2,
+    .call-stage .video-grid.grid-3,
+    .call-stage .video-grid.grid-4 {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .call-stage .video-grid.grid-many {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+
     .call-stage .video-card {
       min-height: 240px;
       background: rgba(0, 0, 0, 0.28);
@@ -2100,6 +2114,32 @@
     .call-stage .video-card video {
       height: 100%;
       min-height: 240px;
+    }
+
+    .call-stage .video-card.placeholder {
+      display: grid;
+      place-items: center;
+      min-height: 180px;
+      background:
+        radial-gradient(circle at 50% 35%, rgba(255, 99, 184, 0.16), transparent 34%),
+        rgba(0, 0, 0, 0.22);
+      color: #f4f6ff;
+      text-align: center;
+      padding: 14px;
+    }
+
+    .call-stage .video-card.placeholder .video-label {
+      padding: 0;
+      color: #f4f6ff;
+      display: grid;
+      gap: 6px;
+      justify-items: center;
+    }
+
+    .call-stage .video-card.placeholder .member-avatar {
+      width: 56px;
+      height: 56px;
+      font-size: 18px;
     }
 
     .call-empty {
@@ -2204,15 +2244,30 @@
       }
 
       .call-stage .video-grid {
-        grid-template-columns: 1fr;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .call-stage .video-card {
-        min-height: 220px;
+        min-height: 160px;
       }
 
       .call-stage .video-card video {
-        min-height: 220px;
+        min-height: 160px;
+      }
+
+      .call-stage .video-grid.grid-1 {
+        grid-template-columns: 1fr;
+      }
+
+      .call-stage .video-grid.grid-2,
+      .call-stage .video-grid.grid-3,
+      .call-stage .video-grid.grid-4,
+      .call-stage .video-grid.grid-many {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .call-stage .video-card.placeholder {
+        min-height: 140px;
       }
 
       .call-empty {

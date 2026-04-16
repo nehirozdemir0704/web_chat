@@ -962,6 +962,7 @@ function renderVideoPanel() {
   }
 
   const cards = [];
+  const remoteParticipantNames = participants.filter((username) => username !== currentUser);
   if (localStream) {
     cards.push(`
       <div class="video-card ${isUserSpeaking(currentUser) ? 'speaking' : ''}">
@@ -971,7 +972,33 @@ function renderVideoPanel() {
     `);
   }
 
+  remoteParticipantNames.forEach((username) => {
+    if (remoteStreams.has(username)) {
+      cards.push(`
+        <div class="video-card ${isUserSpeaking(username) ? 'speaking' : ''}">
+          <video id="remoteVideo_${username}" autoplay playsinline></video>
+          <div class="video-label">${escapeHtml(username)} ${isUserSpeaking(username) ? '• konusuyor' : ''}</div>
+        </div>
+      `);
+      return;
+    }
+
+    cards.push(`
+      <div class="video-card placeholder">
+        <div class="video-label">
+          ${avatarMarkup(username, 'member-avatar')}
+          <span>${escapeHtml(username)}</span>
+          <small>Baglanti bekleniyor</small>
+        </div>
+      </div>
+    `);
+    return;
+  });
+
   for (const [username] of remoteStreams.entries()) {
+    if (remoteParticipantNames.includes(username)) {
+      continue;
+    }
     cards.push(`
       <div class="video-card ${isUserSpeaking(username) ? 'speaking' : ''}">
         <video id="remoteVideo_${username}" autoplay playsinline></video>
@@ -989,8 +1016,19 @@ function renderVideoPanel() {
     `);
   }
 
+  const tileCount = cards.length;
+  const gridClass = tileCount <= 1
+    ? 'grid-1'
+    : tileCount === 2
+      ? 'grid-2'
+      : tileCount === 3
+        ? 'grid-3'
+        : tileCount === 4
+          ? 'grid-4'
+          : 'grid-many';
+
   videoPanel.innerHTML = `
-    <div class="video-grid">${cards.join('')}</div>
+    <div class="video-grid ${gridClass}">${cards.join('')}</div>
   `;
 
   if (localStream) {
@@ -3212,6 +3250,16 @@ function openQuickActionsFromMobile(event) {
   }, 0);
 }
 
+function bindMobileButton(button, handler) {
+  if (!button) {
+    return;
+  }
+
+  button.onclick = handler;
+  button.onpointerup = handler;
+  button.ontouchend = handler;
+}
+
 function toggleMembersPanel() {
   if (isMobileLayout()) {
     const willOpen = !sidebar.classList.contains('mobile-open');
@@ -3359,24 +3407,33 @@ window.onload = () => {
     }
   };
   composerAddBtn.onclick = openQuickActions;
-  mobileMenuBtn.onclick = () => {
+  const handleMobileMenu = (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
     if (channelsPanel.classList.contains('mobile-open')) {
       closeMobilePanels();
       return;
     }
     openMobilePanel('channels');
   };
-  mobileVoiceBtn.onclick = joinBestVoiceChannel;
-  mobileMembersBtn.onclick = () => {
+  const handleMobileVoice = (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
+    joinBestVoiceChannel();
+  };
+  const handleMobileMembers = (event) => {
+    event?.preventDefault?.();
+    event?.stopPropagation?.();
     if (sidebar.classList.contains('mobile-open')) {
       closeMobilePanels();
       return;
     }
     toggleMembersPanel();
   };
-  mobileActionsBtn.onclick = openQuickActionsFromMobile;
-  mobileActionsBtn.onpointerup = openQuickActionsFromMobile;
-  mobileActionsBtn.ontouchend = openQuickActionsFromMobile;
+  bindMobileButton(mobileMenuBtn, handleMobileMenu);
+  bindMobileButton(mobileVoiceBtn, handleMobileVoice);
+  bindMobileButton(mobileMembersBtn, handleMobileMembers);
+  bindMobileButton(mobileActionsBtn, openQuickActionsFromMobile);
   attachmentInput.onchange = () => {
     const file = attachmentInput.files?.[0];
     if (!file) {
