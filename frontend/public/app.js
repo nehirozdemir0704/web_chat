@@ -832,7 +832,8 @@ function wsProtocol() {
   return location.protocol === 'https:' ? 'wss' : 'ws';
 }
 
-function closePeerConnection(username) {
+function closePeerConnection(username, options = {}) {
+  const { preserveRemoteStream = false } = options;
   const disconnectTimer = peerDisconnectTimers.get(username);
   if (disconnectTimer) {
     clearTimeout(disconnectTimer);
@@ -848,7 +849,9 @@ function closePeerConnection(username) {
     pc.close();
     peerConnections.delete(username);
   }
-  remoteStreams.delete(username);
+  if (!preserveRemoteStream) {
+    remoteStreams.delete(username);
+  }
   stopSpeakingMonitor(username);
   peerOfferState.delete(username);
   pendingIceCandidates.delete(username);
@@ -862,9 +865,9 @@ function schedulePeerDisconnect(username) {
     clearTimeout(existing);
   }
   const timeout = setTimeout(() => {
-    closePeerConnection(username);
+    closePeerConnection(username, { preserveRemoteStream: true });
     renderVideoPanel();
-  }, 6000);
+  }, 15000);
   peerDisconnectTimers.set(username, timeout);
 }
 
@@ -889,7 +892,7 @@ function schedulePeerReconnect(username, delay = 2200) {
     if (currentPc && isPeerConnected(currentPc)) {
       return;
     }
-    closePeerConnection(username);
+    closePeerConnection(username, { preserveRemoteStream: true });
     initiateOffer(username).catch(() => showToast('Video baglantisi yeniden kuruluyor...'));
   }, delay);
   peerReconnectTimers.set(username, timeout);
@@ -933,6 +936,13 @@ function createRemoteStreamFromEvent(username, event) {
   }
 
   const existingStream = remoteStreams.get(username) || new MediaStream();
+  if (event?.track) {
+    existingStream.getTracks()
+      .filter((track) => track.kind === event.track.kind && track.id !== event.track.id)
+      .forEach((track) => {
+        existingStream.removeTrack(track);
+      });
+  }
   if (event?.track && !existingStream.getTracks().some((track) => track.id === event.track.id)) {
     existingStream.addTrack(event.track);
   }
@@ -1281,6 +1291,13 @@ function createPeerConnection(peerUsername) {
       const sender = pc.addTrack(track, localStream);
       tuneSenderForStability(sender);
     });
+  }
+
+  if (!pc.getTransceivers().some((transceiver) => transceiver.receiver?.track?.kind === 'video')) {
+    pc.addTransceiver('video', { direction: localStream ? 'sendrecv' : 'recvonly' });
+  }
+  if (!pc.getTransceivers().some((transceiver) => transceiver.receiver?.track?.kind === 'audio')) {
+    pc.addTransceiver('audio', { direction: localStream ? 'sendrecv' : 'recvonly' });
   }
 
   pc.onicecandidate = (event) => {
