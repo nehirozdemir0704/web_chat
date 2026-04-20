@@ -1698,9 +1698,17 @@ wss.on('connection', (ws) => {
         });
 
         if (result.error) {
-          ws.send(JSON.stringify({ type: 'error', message: result.error }));
+          ws.send(JSON.stringify({ type: 'error', message: result.error, clientId: data.clientId || null }));
         } else if (result.systemText) {
           ws.send(JSON.stringify({ type: 'system', text: result.systemText }));
+        } else if (result.postedMessage) {
+          saveState();
+          broadcast('message', {
+            serverId: data.serverId,
+            channelId: data.channelId,
+            message: result.postedMessage
+          });
+          broadcastServer(data.serverId);
         }
         return;
       }
