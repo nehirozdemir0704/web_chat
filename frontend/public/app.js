@@ -2562,11 +2562,7 @@ function showLogin() {
 
   showModal(`
     <div class="auth-sparkle">Hos Geldiniz</div>
-    <div class="auth-caption">
-      <strong>Pembe gece modu</strong>
-      Topluluguna tek dokunusta baglan.
-    </div>
-    <h2>Topluluk Sunucusu Giris</h2>
+    <h2>CHATCORD</h2>
     <p class="modal-copy">Kullanici adi ve sifrenizi girin.</p>
     <input id="loginUser" class="modal-input" placeholder="Kullanici adi" />
     <input id="loginPass" class="modal-input" type="password" placeholder="Sifre" />
